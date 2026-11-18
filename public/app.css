@@ -1,5 +1,5 @@
-:root{--bg:#f3f4f8;--card:#fff;--tx:#14161c;--mut:#7b8190;--line:#e8eaf0;--pri:#3b6ef6;--pri2:#e9efff;--red:#e5484d;--grn:#22a06b;--shadow:0 8px 24px rgba(59,110,246,.35)}
-:root[data-theme=dark]{--bg:#0f1115;--card:#1a1d24;--tx:#f1f3f8;--mut:#8b92a3;--line:#2a2e38;--pri:#5b87ff;--pri2:#222b45;--red:#ff6b70;--grn:#3ccf91;--shadow:0 8px 24px rgba(0,0,0,.5)}
+:root{--bg:#f2f3f5;--card:#fff;--tx:#14161c;--mut:#7b8190;--line:#e6e8ec;--pri:#1b2f5e;--pri2:#e6ebf5;--red:#e5484d;--grn:#22a06b;--ylw:#f5c518;--onpri:#fff;--grad:linear-gradient(135deg,#0a1530 0%,#132652 55%,#1f3b72 100%);--grad2:linear-gradient(135deg,#132652,#1f3b72);--shadow:0 8px 24px rgba(19,38,82,.3)}
+:root[data-theme=dark]{--bg:#141517;--card:#1f2024;--tx:#f1f3f8;--mut:#8e9199;--line:#2d2f34;--pri:#f5c518;--pri2:#33300f;--red:#ff6b70;--grn:#3ccf91;--ylw:#f5c518;--onpri:#1a1b1e;--grad:linear-gradient(135deg,#08112a 0%,#10214a 55%,#1b3366 100%);--grad2:linear-gradient(135deg,#f5c518,#e0a800);--shadow:0 8px 24px rgba(0,0,0,.5)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;transition:background .25s,color .25s}
 body{padding-top:env(safe-area-inset-top)}
@@ -83,3 +83,37 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .cfa button+button{border-left:1px solid var(--line)}
 .cfa button:active{background:var(--line)}
 .cfa .dng{color:var(--red);font-weight:600}
+
+/* ---------- палитра midnight blue + жёлтый ---------- */
+.ico:has(.i-food){background:#fff0e3;color:#f97316}:root[data-theme=dark] .ico:has(.i-food){background:#3a2414;color:#ff9a4d}.lic:has(.i-food){color:#f97316}:root[data-theme=dark] .lic:has(.i-food){color:#ff9a4d}
+.ico:has(.i-game){background:#f1ebff;color:#8b5cf6}:root[data-theme=dark] .ico:has(.i-game){background:#2b2245;color:#a78bfa}.lic:has(.i-game){color:#8b5cf6}:root[data-theme=dark] .lic:has(.i-game){color:#a78bfa}
+.ico:has(.i-car){background:#e7f0ff;color:#3b82f6}:root[data-theme=dark] .ico:has(.i-car){background:#1c2a45;color:#6aa1ff}.lic:has(.i-car){color:#3b82f6}:root[data-theme=dark] .lic:has(.i-car){color:#6aa1ff}
+.ico:has(.i-receipt){background:#dff6f3;color:#0d9488}:root[data-theme=dark] .ico:has(.i-receipt){background:#12322f;color:#3fd0c8}.lic:has(.i-receipt){color:#0d9488}:root[data-theme=dark] .lic:has(.i-receipt){color:#3fd0c8}
+.ico:has(.i-family){background:#fde7f3;color:#ec4899}:root[data-theme=dark] .ico:has(.i-family){background:#3a1a2c;color:#f472b6}.lic:has(.i-family){color:#ec4899}:root[data-theme=dark] .lic:has(.i-family){color:#f472b6}
+.ico:has(.i-bag){background:#fcf2dc;color:#d97706}:root[data-theme=dark] .ico:has(.i-bag){background:#3a2c12;color:#f5b544}.lic:has(.i-bag){color:#d97706}:root[data-theme=dark] .lic:has(.i-bag){color:#f5b544}
+.ico:has(.i-heart){background:#fde7e7;color:#ef4444}:root[data-theme=dark] .ico:has(.i-heart){background:#3a1a1c;color:#ff7a7a}.lic:has(.i-heart){color:#ef4444}:root[data-theme=dark] .lic:has(.i-heart){color:#ff7a7a}
+.ico:has(.i-wallet){background:#e1f6e8;color:#16a34a}:root[data-theme=dark] .ico:has(.i-wallet){background:#133222;color:#4ade80}.lic:has(.i-wallet){color:#16a34a}:root[data-theme=dark] .lic:has(.i-wallet){color:#4ade80}
+.ico:has(.i-plus){background:#e1f6e8;color:#16a34a}:root[data-theme=dark] .ico:has(.i-plus){background:#133222;color:#4ade80}.lic:has(.i-plus){color:#16a34a}:root[data-theme=dark] .lic:has(.i-plus){color:#4ade80}
+.ico:has(.i-cash){background:#e1f6e8;color:#16a34a}:root[data-theme=dark] .ico:has(.i-cash){background:#133222;color:#4ade80}.lic:has(.i-cash){color:#16a34a}:root[data-theme=dark] .lic:has(.i-cash){color:#4ade80}
+.ico:has(.i-card){background:#ebebff;color:#6366f1}:root[data-theme=dark] .ico:has(.i-card){background:#24234a;color:#8b8cf8}.lic:has(.i-card){color:#6366f1}:root[data-theme=dark] .lic:has(.i-card){color:#8b8cf8}
+.ico:has(.i-globe){background:#e0f3fd;color:#0ea5e9}:root[data-theme=dark] .ico:has(.i-globe){background:#11303e;color:#38bdf8}.lic:has(.i-globe){color:#0ea5e9}:root[data-theme=dark] .lic:has(.i-globe){color:#38bdf8}
+.ico:has(.i-transfer){background:#eef1f5;color:#64748b}:root[data-theme=dark] .ico:has(.i-transfer){background:#262c36;color:#a3adbd}.lic:has(.i-transfer){color:#64748b}:root[data-theme=dark] .lic:has(.i-transfer){color:#a3adbd}
+.ico:has(.i-target){background:#fde7e7;color:#ef4444}:root[data-theme=dark] .ico:has(.i-target){background:#3a1a1c;color:#ff7a7a}.lic:has(.i-target){color:#ef4444}:root[data-theme=dark] .lic:has(.i-target){color:#ff7a7a}
+.ico:has(.i-grid){background:#f1ebff;color:#8b5cf6}:root[data-theme=dark] .ico:has(.i-grid){background:#2b2245;color:#a78bfa}.lic:has(.i-grid){color:#8b5cf6}:root[data-theme=dark] .lic:has(.i-grid){color:#a78bfa}
+.ico:has(.i-rate){background:#e1f6e8;color:#16a34a}:root[data-theme=dark] .ico:has(.i-rate){background:#133222;color:#4ade80}.lic:has(.i-rate){color:#16a34a}:root[data-theme=dark] .lic:has(.i-rate){color:#4ade80}
+.ico:has(.i-sliders){background:#eef1f5;color:#64748b}:root[data-theme=dark] .ico:has(.i-sliders){background:#262c36;color:#a3adbd}.lic:has(.i-sliders){color:#64748b}:root[data-theme=dark] .lic:has(.i-sliders){color:#a3adbd}
+.ico:has(.i-tag){background:#eef1f5;color:#64748b}:root[data-theme=dark] .ico:has(.i-tag){background:#262c36;color:#a3adbd}.lic:has(.i-tag){color:#64748b}:root[data-theme=dark] .lic:has(.i-tag){color:#a3adbd}
+.ico{transition:background .25s,color .25s}
+.card.hero{background:var(--grad);color:#fff;box-shadow:0 14px 34px rgba(19,38,82,.35);border:1px solid rgba(245,197,24,.28)}
+:root[data-theme=dark] .card.hero{box-shadow:0 14px 34px rgba(0,0,0,.55)}
+.card.hero .lbl{color:var(--ylw);letter-spacing:.06em;text-transform:uppercase;font-size:12px;font-weight:600}
+.card.hero .sub{color:rgba(255,255,255,.75)}
+.quick button,.seg button.on,.btn:not(.sec):not(.red){background:var(--grad2);color:var(--onpri);border:0}
+.chip.on{color:var(--onpri)}
+.bar i{background:var(--ylw)}
+.fab{background:var(--ylw);color:#1a1b1e;border:0;box-shadow:0 10px 24px rgba(245,197,24,.4)}
+:root[data-theme=dark] .fab{box-shadow:0 10px 24px rgba(0,0,0,.5)}
+.nav a span{width:56px;height:30px;margin:0 auto 2px;border-radius:15px;transition:background .25s ease,color .25s ease,transform .25s ease}
+.nav a.on span{background:var(--pri2);transform:scale(1.04)}
+.nav a.on{color:var(--pri);font-weight:600}
+.legend{text-align:left}

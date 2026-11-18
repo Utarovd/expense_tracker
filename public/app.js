@@ -133,7 +133,7 @@ const IC = {
   ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
 };
-const svg = (n, sz = 22) => `<svg class="i" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
+const svg = (n, sz = 22) => `<svg class="i i-${n}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
 const CATIC = { food: 'food', leisure: 'game', transport: 'car', expenses: 'receipt', family: 'family', shopping: 'bag', health: 'heart', salary: 'wallet', 'other income': 'plus' };
 const rootIcon = (r, sz) => !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
 const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
@@ -262,7 +262,7 @@ function pgHome() {
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
-  <div class="card"><div class="lbl">Balance</div><div class="big">${fmt(tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  <div class="card hero"><div class="lbl">Balance</div><div class="big">${fmt(tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
   <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
@@ -281,12 +281,14 @@ function pgTrans() {
   ${Object.keys(days).map(k => `<div class="day"><span>${k}</span><span>${fmt(days[k].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), 'UZS')}</span></div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || '<div class="sub" style="text-align:center;padding:30px">No transactions</div>'}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
+const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
+const colOf = (it, i) => (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length];
 function pgStats() {
   const m = curMonth(); const sp = spentByRoot(m); const disp = S.dispCur || 'UZS'; const rate = curRate();
   const conv = (v) => disp === 'USD' ? v / rate : v; const f = (v) => disp === 'USD' ? fmt(Math.round(conv(v)), 'USD') : fmt(v, 'UZS');
   const items = Object.entries(sp.out).map(([id, v]) => ({ id, v, c: byId('categories', id) })).sort((a, b) => b.v - a.v);
   let acc = 0; const R = 70, C = 2 * Math.PI * R;
-  const donut = sp.total ? `<svg viewBox="0 0 200 200" width="190" height="190" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const s = `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${PAL[i % PAL.length]}" stroke-width="36" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>` : '<div class="sub">No expenses</div>';
+  const donut = sp.total ? `<svg viewBox="0 0 200 200" width="190" height="190" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const s = `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="36" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>` : '<div class="sub">No expenses</div>';
   // столбцы по дням
   const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
   rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
@@ -296,7 +298,7 @@ function pgStats() {
   return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>${mnav()}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
   <div class="card" style="text-align:center"><div class="lbl">Spent this month</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div style="display:flex;justify-content:center;margin:12px 0">${donut}</div>
-  ${items.map((it, i) => `<div class="legend"><i style="background:${PAL[i % PAL.length]}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
+  ${items.map((it, i) => `<div class="legend"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
   <div class="card"><div class="lbl">By day</div>${bars}</div>`;
 }
 function pgAccounts() {
