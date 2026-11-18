@@ -341,9 +341,10 @@ function pillText(el, x, y, tr) {
 }
 function setPill(b, anim) {
   const el = document.querySelector('.navpill'); if (!el || !b) return;
-  const tr = anim ? 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1),height .22s cubic-bezier(.4,0,.2,1)' : 'none';
+  const cv = typeof anim === 'string' ? anim : '.22s cubic-bezier(.4,0,.2,1)';
+  const tr = anim ? `transform ${cv},width ${cv},height ${cv}` : 'none';
   el.style.transition = tr; el.style.width = b.w + 'px'; el.style.height = b.h + 'px'; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
-  pillText(el, b.x, b.y, anim ? 'transform .22s cubic-bezier(.4,0,.2,1)' : 'none');
+  pillText(el, b.x, b.y, anim ? `transform ${cv}` : 'none');
 }
 const onTab = (path) => { const hs = document.querySelectorAll('.navhi a'); document.querySelectorAll('.nav a[data-go]').forEach((a, n) => { const on = a.dataset.go === path; a.classList.toggle('on', on); if (hs[n]) hs[n].classList.toggle('on', on); }); };
 function placePill() {
@@ -892,6 +893,9 @@ window.addEventListener('scroll', () => { const sb = document.querySelector('.sb
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => 0);
 boot();
 
+// доводка после отпускания пальца: начальная скорость анимации = скорость пальца, дальше мягкое торможение (300 мс)
+function flingCurve(remaining, v) { const T = 300; const sp = (Math.sign(remaining) === Math.sign(v) ? Math.abs(v) : 0) * T / Math.max(1, Math.abs(remaining)); const x1 = 0.3, y1 = Math.min(1, sp * x1); return `${T}ms cubic-bezier(${x1},${y1.toFixed(3)},.25,1)`; }
+const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt = t - st.lt; if (dt > 0) st.v = 0.6 * ((x - st.lx) / dt) + 0.4 * (st.v || 0); } st.lx = x; st.lt = t; };
 // свайпы между разделами: страница едет за пальцем, соседняя въезжает рядом
 (() => {
   let st = null;
@@ -910,7 +914,7 @@ boot();
     const i = MAIN.indexOf(S.route); const j = i + (dx < 0 ? 1 : -1);
     if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = j;
       if (j >= 0 && j < MAIN.length) { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); document.body.appendChild(nb); st.nb = nb; } }
-    const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? 0 : dx;
+    const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? 0 : dx; trackV(st, st.dx);
     const c = cur(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${st.dx}px)`; }
     if (st.nb) { st.nb.style.transition = 'none'; st.nb.style.transform = `translateX(${st.dx + (dx < 0 ? W() : -W()) + (dx < 0 ? 16 : -16)}px)`; }
     const pa = tabBox(S.route), pb = st.nb ? tabBox(MAIN[j]) : null;
@@ -920,10 +924,11 @@ boot();
     if (!st || st.lock !== 'x') { st = null; return; }
     const s0 = st; const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const c = cur();
     const done = s0.nb && (Math.abs(s0.dx) > W() * 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
-    const ease = 'transform .3s cubic-bezier(.2,.8,.2,1)'; const sign = s0.dx < 0 ? -1 : 1;
+    const sign = s0.dx < 0 ? -1 : 1; if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0;
+    const cv = flingCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0); const ease = 'transform ' + cv;
     if (c) { c.style.transition = ease; c.style.transform = done ? `translateX(${sign * (W() + 16)}px)` : ''; }
     if (s0.nb) { s0.nb.style.transition = ease; s0.nb.style.transform = done ? 'translateX(0)' : `translateX(${-sign * (W() + 16)}px)`; }
-    const tb = tabBox(done ? MAIN[s0.j] : S.route); if (tb) { setPill(tb, true); S.pill = tb; }
+    const tb = tabBox(done ? MAIN[s0.j] : S.route); if (tb) { setPill(tb, cv); S.pill = tb; }
     onTab(done ? MAIN[s0.j] : S.route);
     setTimeout(() => {
       if (done) { haptic(); slideDir = ''; lastRoute = MAIN[s0.j]; history.pushState({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); }
@@ -997,7 +1002,7 @@ boot();
     const j = st.i + (dx < 0 ? 1 : -1); const bs = [...st.seg.querySelectorAll(':scope > button')]; const a = bs[st.i], b = bs[j];
     const okb = !!(b && !b.disabled);
     if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = okb ? j : -1; if (okb) st.nb = preview(TY[j]); }
-    st.dx = okb ? dx : 0; const w0 = W(); const k = okb ? Math.min(1, Math.abs(dx) / w0) : 0; st.k = k;
+    st.dx = okb ? dx : 0; trackV(st, st.dx); const w0 = W(); const k = okb ? Math.min(1, Math.abs(dx) / w0) : 0; st.k = k;
     const pl = st.seg.querySelector(':scope > .segpill'); if (!pl || !a) return;
     const x = a.offsetLeft + ((okb ? b.offsetLeft : a.offsetLeft) - a.offsetLeft) * k, w = a.offsetWidth + ((okb ? b.offsetWidth : a.offsetWidth) - a.offsetWidth) * k;
     st.px = x; st.pw = w; segMove(pl, x, w, ''); pl.dataset.t = TY[okb && k > 0.5 ? j : st.i];
@@ -1006,6 +1011,7 @@ boot();
   const end = () => {
     if (!st || st.lock !== 'x') { st = null; return; } const s0 = st; st = null; const w0 = W(); const sign = s0.dx < 0 ? -1 : 1;
     const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const done = s0.j > -1 && (s0.k > 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
+    if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0; const EASE = flingCurve((done ? sign * w0 : 0) - s0.dx, s0.v || 0);
     const pl = s0.seg.querySelector(':scope > .segpill'); const bs = s0.seg.querySelectorAll(':scope > button');
     if (done) {
       // старое содержимое уезжает «призраком», новое (настоящее, с фокусом на сумме) доезжает с места предпросмотра
