@@ -582,6 +582,15 @@ export default {
         await setMeta(env, 'tglink', JSON.stringify({ code, exp: now() + 10 * 60000, user_id: uid }));
         return J({ code });
       }
+      if (path === '/api/tg/status') {
+        if (!env.TG_TOKEN) return J({ ok: false, reason: 'no_token' });
+        const w = await tg(env, 'getWebhookInfo', {}).catch(() => null); const i = w?.result || {};
+        const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();
+        const hook = !!i.url && /\/api\/tg$/.test(i.url);
+        const recentErr = i.last_error_date && (now() / 1000 - i.last_error_date) < 3600;
+        const ok = hook && !recentErr && links.c > 0;
+        return J({ ok, reason: !w?.ok ? 'tg_unreachable' : !hook ? 'no_webhook' : recentErr ? 'error' : !links.c ? 'not_linked' : '', error: recentErr ? i.last_error_message : '' });
+      }
       if (path === '/api/tg/setup' && req.method === 'POST') {
         if (!env.TG_TOKEN || !env.TG_SECRET) return J({ error: 'no_token' }, 400);
         const r = await tg(env, 'setWebhook', { url: url.origin + '/api/tg', secret_token: env.TG_SECRET, allowed_updates: ['message', 'callback_query'] });

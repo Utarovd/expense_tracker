@@ -66,3 +66,4 @@ input.f,select.f,textarea.f{width:100%;border:0;background:var(--bg);border-radi
 .stat{font-size:12px;color:var(--mut);text-align:center;padding:6px}
 .err{color:var(--red);font-size:14px;margin:6px 0}
 code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all;font-size:13px}
+.tgst{display:inline-block;margin-left:6px;opacity:0;transform:scale(.6);transition:opacity .3s ease,transform .3s ease}.tgst.on{opacity:1;transform:scale(1)}
