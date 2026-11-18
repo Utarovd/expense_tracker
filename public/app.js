@@ -366,7 +366,7 @@ function pgTrans() {
     (!q || (t.note + ' ' + t.merchant + ' ' + catPath(t.category_id)).toLowerCase().includes(q))).sort((x, y) => y.occurred_at - x.occurred_at);
   const days = {}; list.forEach(t => { const k = dayLabel(t.occurred_at); (days[k] = days[k] || []).push(t); });
   const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount_base, 0);
-  return `<div class="top"><h1>Transactions</h1>${spaceSwitch()}</div>${mnav()}
+  return `<div class="top"><h1>History</h1>${spaceSwitch()}</div>${mnav()}
   <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
   <input id="srch" class="f" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
   <div class="chips"><button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
