@@ -227,14 +227,28 @@ function money(account, amountMinor, rate) {
   return { currency: account.currency, fx_rate: usd ? rate : 1, amount_base: usd ? Math.round(amountMinor * rate) : amountMinor };
 }
 async function findDup(env, accId, type, amount, ts, source) {
-  const { results } = await env.DB.prepare(`SELECT id,source,occurred_at,merchant FROM transactions WHERE account_id=? AND type=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?`)
-    .bind(accId, type, amount, ts - 15 * 60000, ts + 15 * 60000).all();
+  const any = source === 'payme'; // скрин Payme может относиться к любой карте: ищем по всем счетам
+  const { results } = await env.DB.prepare(`SELECT id,source,occurred_at,merchant FROM transactions WHERE (account_id=? OR ?) AND type=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?`)
+    .bind(accId, any ? 1 : 0, type, amount, ts - 15 * 60000, ts + 15 * 60000).all();
   return results.find(r => r.source !== source || Math.abs(r.occurred_at - ts) < 60000) || null;
 }
 
 // ---------- СМС банка ----------
+function parseHumoSms(t) {
+  // HUMOCARD *7052: oplata 14000.00 UZS; OCTOBANK YANDEX DELI; 26-11-09 20:33; Dostupno: 414301.00 UZS
+  const m = t.match(/^(?:HUMOCARD|UZCARD|HUMO|UZCARD-?\w*)\s*\*+(\d{4}):\s*(\S+)\s+([\d.,]+)\s*([A-Z]{3});\s*(.+?);\s*(\d\d)-(\d\d)-(\d\d)\s+(\d\d):(\d\d);?\s*(?:Dostupno:\s*([\d.,]+))?/i);
+  if (!m) return null;
+  const [, last4, verb, amt, cur, merchant, yy, mm, dd, HH, MM, bal] = m;
+  const v = verb.toLowerCase(); let type = null;
+  if (/^oplata|pokupka|snyatie|spisanie|perevod-?(ischod|iskh)?$/.test(v)) type = 'expense';
+  else if (/popoln|zachisl|postupl|vozvrat|kirim/.test(v)) type = 'income';
+  if (!type) return null;
+  const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
+  return { type, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${yy}${mm}${dd}${HH}${MM}:${amt}:${bal || ''}` };
+}
 function parseSms(text) {
   const t = String(text).replace(/\s+/g, ' ').trim();
+  if (/^(HUMO|UZCARD)/i.test(t)) return parseHumoSms(t);
   const m = t.match(/^(.+?):\s*(.+?),\s*[A-Z]{2},\s*(\d\d)\.(\d\d)\.(\d\d)\s+(\d\d):(\d\d)\s*,\s*karta\s*\*+(\d{4})\.\s*Miqdor:\s*([\d.,]+)\s*([A-Z]{3})(?:\s*Qoldiq:\s*([\d.,]+))?/i);
   if (!m) return null;
   const [, kind, merchant, dd, mm, yy, HH, MM, last4, amt, cur, bal] = m;
@@ -275,7 +289,7 @@ async function ingest(env, ev) {
   const m = (ev.merchant || '').toUpperCase();
   const sms = ev.src === 'sms';
   const stmts = []; let txId = rid(); let notice;
-  if (sms && /IYB MOBILE EXCHANGE/.test(m) && ev.type === 'expense' && acc.currency === 'UZS') {
+  if (sms && /IYB MOBILE EXCHANGE|IPAK YULI BANK KONV/.test(m) && ev.type === 'expense' && acc.currency === 'UZS') {
     // обмен сум -> USD на Visa: перевод между счетами
     const visa = (await env.DB.prepare("SELECT * FROM accounts WHERE space_id=? AND type='card_visa' AND deleted_at IS NULL LIMIT 1").bind(space).first());
     const g = rid(); const sell = await effRate(env, 'sell');
@@ -398,7 +412,7 @@ async function tgHandle(env, update) {
       if (!r || !(amt > 0)) return tgSend(env, chat, 'Couldn’t read the amount on the screenshot. Type it instead, e.g. “shop 15$”.');
       const dt = String(r.datetime || '').match(/(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)/);
       const ts = dt ? Date.UTC(+dt[1], +dt[2] - 1, +dt[3], +dt[4], +dt[5]) - TZ_OFFSET : now();
-      const res = await ingest(env, { src: 'payme', type: 'expense', merchant: r.merchant || '', ts, amount: toMinor(amt), currency: 'UZS', card: '', ext: 'tgphoto:' + p.file_unique_id });
+      const res = await ingest(env, { src: 'payme', type: 'expense', merchant: r.merchant || '', ts, amount: toMinor(amt), currency: 'UZS', card: '', last4: '7052', ext: 'tgphoto:' + p.file_unique_id });
       if (res.dup) return tgSend(env, chat, 'This transaction is already recorded.');
       res.text = '🖼 Read from the Payme screenshot (check the amount):\n' + res.text;
       return notify(env, res);

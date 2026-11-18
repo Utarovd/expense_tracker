@@ -10,14 +10,14 @@ Everything below uses the exact English names from the app and from iOS.
 5. Tap the card **URL for Shortcuts (SMS and Wallet)** → **Copy**. This is your secret URL, it looks like `https://budget.in-manager.uz/api/in/xxxxxxxx`. Send it to yourself (Notes) to paste into Shortcuts on iPhone.
 
 ## Part 2. Opening balances
-Tab **Accounts** → tap an account → field **Opening balance** → enter the amount you have today → **Save**. Do it for **Cash**, **UZS card** (also check **Last 4 card digits** = 3153) and **Visa** (amount in dollars). Without this balances count from zero.
+Tab **Accounts** → tap an account → field **Opening balance** → enter the amount you have today → **Save**. Do it for **Cash**, **UZS card**, **Humo card** (also check **Last 4 card digits** = 3153) and **Visa** (amount in dollars). Without this balances count from zero.
 
 ## Part 3. iPhone Shortcuts: three automations
 Open the **Shortcuts** app → tab **Automation** → **+** (top right) → **New Automation**.
 
 ### A. Bank SMS from 5800
 1. Choose **Message**.
-2. **Sender**: tap **Choose** and pick the contact or number 5800 (type 5800 if it is not in contacts). Leave **Message Contains** empty.
+2. **Sender**: add two senders: 5800 (Ipak Yuli card) and 13131 (Humo card ···7052). Leave **Message Contains** empty.
 3. Select **Run Immediately**. Turn **Notify When Run** off. Tap **Next**.
 4. Tap **New Blank Automation**. Tap **Add Action**, search **Get Contents of URL**, add it.
 5. Tap **URL**, paste your secret URL.
@@ -55,3 +55,6 @@ Tip: to pick a property, tap the variable after you insert **Shortcut Input**; a
 
 ## Check that it works
 Make a small Apple Pay payment. Within seconds the bot sends a message "💳 −… · merchant" with category buttons, and the record appears in **Transactions** (source: Wallet). If nothing comes, tell me which automation (A, B, C) and what time, I will check the server log.
+
+## Humo card
+SMS from 13131 (`HUMOCARD *7052: oplata ...`) go to the account **Humo card** (···7052). Payme screenshots sent to the bot also go to **Humo card** and are merged with the matching SMS (same amount within 15 minutes). "Ipak yuli bank konv" is recorded as a transfer to **Visa** (dollar part is an estimate).
