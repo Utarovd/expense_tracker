@@ -271,18 +271,35 @@ function render(soft) {
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
 // плавные сегменты: одна плашка едет от прошлого выбора к новому
+// белый текст внутри плашки сегмента: копия кнопок внутри плашки, сдвинутая обратно
+function segClone(sg, pl) {
+  const bs = [...sg.querySelectorAll(':scope > button')]; const sig = bs.map(b => b.textContent + (b.dataset.id || '')).join('|');
+  let hi = pl.firstElementChild;
+  if (!hi || pl._sig !== sig) {
+    pl._sig = sig; if (!hi) { hi = document.createElement('div'); hi.className = 'seghi'; pl.appendChild(hi); }
+    hi.innerHTML = ''; bs.forEach(b => { const c = b.cloneNode(true); c.className = ''; c.removeAttribute('data-act'); c.removeAttribute('disabled'); c.tabIndex = -1; c.setAttribute('aria-hidden', 'true'); hi.appendChild(c); });
+  }
+  const cs = getComputedStyle(sg); hi.style.width = sg.clientWidth + 'px'; hi.style.height = sg.clientHeight + 'px'; hi.style.padding = cs.padding; hi.style.gap = cs.gap;
+  return hi;
+}
+function segMove(pl, x, w, dur) {
+  const sg = pl.parentElement, hi = pl.firstElementChild || segClone(sg, pl);
+  pl.style.transition = dur ? `transform ${dur},width ${dur},background .22s ease` : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`;
+  if (hi) { hi.style.transition = dur ? `transform ${dur}` : 'none'; hi.style.transform = `translate(${-x}px,${-pl.offsetTop}px)`; }
+}
 const segPos = {};
 function initSegs() {
   document.querySelectorAll('.seg').forEach((sg) => {
-    const on = sg.querySelector('button.on'); const first = sg.querySelector('button'); if (!first) return;
+    const on = sg.querySelector(':scope > button.on'); const first = sg.querySelector(':scope > button'); if (!first) return;
     const key = (first.dataset.act || '') + ':' + (sg.closest('.ov') ? 'ov' : S.route);
     let pl = sg.querySelector(':scope > .segpill'); const fresh = !pl;
     if (!pl) { pl = document.createElement('i'); pl.className = 'segpill'; sg.prepend(pl); }
+    segClone(sg, pl);
     if (!on) { pl.style.opacity = 0; return; }
     const b = { x: on.offsetLeft, w: on.offsetWidth, t: on.dataset.id || '' };
     if (pl._t === b.t + b.x + ':' + b.w) return; pl._t = b.t + b.x + ':' + b.w;
     pl.dataset.t = b.t; const prev = segPos[key];
-    const put = (x, w, anim) => { pl.style.transition = anim ? 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1),background .22s ease' : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`; pl.style.opacity = 1; };
+    const put = (x, w, anim) => { segMove(pl, x, w, anim ? '.22s cubic-bezier(.4,0,.2,1)' : ''); pl.style.opacity = 1; };
     if (fresh && prev && (prev.x !== b.x || prev.w !== b.w)) { put(prev.x, prev.w, false); requestAnimationFrame(() => requestAnimationFrame(() => put(b.x, b.w, true))); } else put(b.x, b.w, !fresh);
     segPos[key] = b;
   });
@@ -564,14 +581,14 @@ function openTx(id, type) {
   drawTx();
   if (!id) { const i = sheetEl() && sheetEl().querySelector('[data-f=amount]'); if (i) i.focus({ preventScroll: true }); }
 }
-function drawTx() {
+function txHtml() {
   const accs = accounts(); const isT = F.type === 'transfer';
   const opts = (sel) => accs.map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.name)} (${a.currency})</option>`).join('');
   const kind = F.type === 'income' ? 'income' : 'expense';
   const catOpts = cats(kind).filter(c => !c.parent_id && !c.archived).map(p => `<optgroup label="${esc(p.name)}"><option value="${p.id}" ${F.category === p.id ? 'selected' : ''}>${esc(p.name)}</option>${cats(kind).filter(c => c.parent_id === p.id && !c.archived).map(c => `<option value="${c.id}" ${F.category === c.id ? 'selected' : ''}>${esc(p.name)} › ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
   const fa = isT ? byId('accounts', F.from) : byId('accounts', F.account), ta = isT ? byId('accounts', F.to) : null;
   const cross = isT && fa && ta && fa.currency !== ta.currency;
-  openSheet(`<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
+  return `<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
   <div class="seg tt" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
   <input class="f amtin amt-${F.type}" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
   ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
@@ -579,7 +596,10 @@ function drawTx() {
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
   ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${fmtRate(curRate())} (from settings)</div>` : ''}
-  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full save-${F.type}" data-act="txsave">Save</button></div>`);
+  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full save-${F.type}" data-act="txsave">Save</button></div>`;
+}
+function drawTx() {
+  openSheet(txHtml());
   const am = document.getElementById('f-amount'); if (am && !F.id && !F.amount) setTimeout(() => am.focus(), 320);
 }
 function setFType(id) { const was = F.type; if (was === id) return;
@@ -915,46 +935,63 @@ boot();
   document.addEventListener('input', () => requestAnimationFrame(place));
   window.addEventListener('resize', () => requestAnimationFrame(place));
 })();
-// окно «+»: свайп влево/вправо переключает Expense / Income / Transfer, плашка едет за пальцем
+// окно «+»: свайп влево/вправо переключает Expense / Income / Transfer; плашка и всё содержимое под ней едут за пальцем синхронно
 (() => {
   const TY = ['expense', 'income', 'transfer'];
+  const EASE = '.3s cubic-bezier(.2,.8,.2,1)';
   let st = null;
-  const parts = () => { const sh = sheetEl(); return sh ? [...sh.children].filter(e => e.tagName !== 'H2' && !e.classList.contains('seg')) : []; };
+  const parts = (root) => [...(root || sheetEl()).children].filter(e => e.tagName !== 'H2' && !e.classList.contains('seg') && !e.classList.contains('txnb') && !e.classList.contains('clrx'));
+  const W = () => (sheetEl() ? sheetEl().clientWidth : 360) + 16;
+  const typeF = (ty) => { const g = { ...F, type: ty }; if (ty === 'transfer' && F.type !== 'transfer') { if (F.account) g.from = F.account; if (g.to === g.from) g.to = ''; } else if (F.type === 'transfer' && ty !== 'transfer' && F.from) g.account = F.from; if (ty !== 'transfer') g.category = ''; return g; };
+  function preview(ty) { // содержимое соседнего типа, чтобы оно въезжало рядом
+    const keep = F; F = typeF(ty); let html; try { html = txHtml(); } finally { F = keep; }
+    const tmp = document.createElement('div'); tmp.innerHTML = html; const nb = document.createElement('div'); nb.className = 'txnb';
+    parts(tmp).forEach(e => nb.appendChild(e)); const sh = sheetEl(); const first = parts()[0];
+    nb.style.top = (first ? first.offsetTop : 0) + 'px'; sh.appendChild(nb); return nb;
+  }
+  const move = (els, x, dur) => els.forEach(el => { el.style.transition = dur ? `transform ${dur}` : 'none'; el.style.transform = x ? `translateX(${x}px)` : ''; });
   document.addEventListener('touchstart', (e) => {
-    st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
+    if (st && st.nb) st.nb.remove(); st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
     const seg = sh.querySelector('.seg.tt'); if (!seg || e.target.closest('input[type=datetime-local],.clrx')) return;
-    const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, i: TY.indexOf(F.type), j: -1, dx: 0 };
+    const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, i: TY.indexOf(F.type), j: -1, dx: 0, nb: null, k: 0 };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
     if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { st = null; return; } }
     e.preventDefault();
     const j = st.i + (dx < 0 ? 1 : -1); const bs = [...st.seg.querySelectorAll(':scope > button')]; const a = bs[st.i], b = bs[j];
-    const okb = b && !b.disabled; st.j = okb ? j : -1; st.dx = okb ? dx : 0;
-    const pl = st.seg.querySelector('.segpill'); if (!pl || !a) return;
-    const k = okb ? Math.min(1, Math.abs(dx) / (st.seg.offsetWidth * 0.45)) : 0; st.k = k;
+    const okb = !!(b && !b.disabled);
+    if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = okb ? j : -1; if (okb) st.nb = preview(TY[j]); }
+    st.dx = okb ? dx : 0; const w0 = W(); const k = okb ? Math.min(1, Math.abs(dx) / w0) : 0; st.k = k;
+    const pl = st.seg.querySelector(':scope > .segpill'); if (!pl || !a) return;
     const x = a.offsetLeft + ((okb ? b.offsetLeft : a.offsetLeft) - a.offsetLeft) * k, w = a.offsetWidth + ((okb ? b.offsetWidth : a.offsetWidth) - a.offsetWidth) * k;
-    bs.forEach((x, n) => x.classList.toggle('on', n === (okb && k > 0.5 ? j : st.i)));
-    pl.dataset.t = TY[okb && k > 0.5 ? j : st.i];
-    st.px = x; st.pw = w; pl.style.transition = 'none'; pl.style.transform = `translateX(${x}px)`; pl.style.width = w + 'px';
-    parts().forEach(el => { el.style.transition = 'none'; el.style.transform = `translateX(${st.dx * 0.25}px)`; el.style.opacity = 1 - k * 0.35; });
+    st.px = x; st.pw = w; segMove(pl, x, w, ''); pl.dataset.t = TY[okb && k > 0.5 ? j : st.i];
+    move(parts(), st.dx, ''); if (st.nb) move([st.nb], st.dx + (dx < 0 ? w0 : -w0), '');
   }, { passive: false });
   const end = () => {
-    if (!st || st.lock !== 'x') { st = null; return; } const s0 = st; st = null;
-    const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const done = s0.j > -1 && (s0.k > 0.35 || (v > 0.5 && Math.abs(s0.dx) > 30));
+    if (!st || st.lock !== 'x') { st = null; return; } const s0 = st; st = null; const w0 = W(); const sign = s0.dx < 0 ? -1 : 1;
+    const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const done = s0.j > -1 && (s0.k > 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
+    const pl = s0.seg.querySelector(':scope > .segpill'); const bs = s0.seg.querySelectorAll(':scope > button');
     if (done) {
-      segPos['ftype:ov'] = { x: s0.px, w: s0.pw, t: TY[s0.i] };
+      // старое содержимое уезжает «призраком», новое (настоящее, с фокусом на сумме) доезжает с места предпросмотра
+      const sh = sheetEl(); const ghost = document.createElement('div'); ghost.className = 'txnb'; const old = parts(); ghost.style.top = (old[0] ? old[0].offsetTop : 0) + 'px';
+      old.forEach(el => { const c = el.cloneNode(true); c.style.transform = ''; c.style.transition = ''; ghost.appendChild(c); });
+      const tgt = bs[s0.j]; segPos['ftype:ov'] = { x: s0.px, w: s0.pw, t: TY[s0.j] };
+      const nbX = s0.dx - sign * w0; if (s0.nb) s0.nb.remove();
       haptic(); setFType(TY[s0.j]);
-      const dir = s0.dx < 0 ? 'pg-next' : 'pg-prev'; parts().forEach(el => el.classList.add(dir));
+      const sh2 = sheetEl(); sh2.appendChild(ghost); move([ghost], s0.dx, ''); const neu = parts(); move(neu, nbX, '');
+      const pl2 = sh2.querySelector('.seg.tt > .segpill'), b2 = sh2.querySelectorAll('.seg.tt > button')[s0.j];
+      if (pl2 && b2) { pl2._t = TY[s0.j] + b2.offsetLeft + ':' + b2.offsetWidth; pl2.dataset.t = TY[s0.j]; segMove(pl2, s0.px, s0.pw, ''); pl2.style.opacity = 1; }
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        move([ghost], sign * w0, EASE); move(neu, 0, EASE); if (pl2 && b2) segMove(pl2, b2.offsetLeft, b2.offsetWidth, EASE);
+        setTimeout(() => { ghost.remove(); neu.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); }, 320);
+      }));
     } else {
-      const pl = s0.seg.querySelector('.segpill'), a = s0.seg.querySelectorAll(':scope > button')[s0.i];
-      s0.seg.querySelectorAll(':scope > button').forEach((x, n) => x.classList.toggle('on', n === s0.i));
-      if (pl) pl.dataset.t = TY[s0.i];
-      if (pl && a) { pl.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1)'; pl.style.transform = `translateX(${a.offsetLeft}px)`; pl.style.width = a.offsetWidth + 'px'; }
-      parts().forEach(el => { el.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1),opacity .22s ease'; el.style.transform = ''; el.style.opacity = ''; });
+      const a = bs[s0.i]; if (pl && a) { pl.dataset.t = TY[s0.i]; segMove(pl, a.offsetLeft, a.offsetWidth, EASE); }
+      move(parts(), 0, EASE); const nb = s0.nb; if (nb) { move([nb], -sign * w0, EASE); setTimeout(() => nb.remove(), 320); }
     }
   };
-  document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', end, { passive: true });
+  document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', () => { if (st && st.nb) st.nb.remove(); st = null; }, { passive: true });
 })();
 
 // нижнее меню: плашку выбранной вкладки можно вести пальцем или мышью; в стиле Liquid Glass она становится линзой
