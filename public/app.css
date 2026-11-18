@@ -72,3 +72,14 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .tgst{opacity:1;transform:none;vertical-align:-4px}.tgst i{display:inline-flex;font-style:normal;animation:pop .3s ease}.tgst .okc{color:var(--grn)}.tgst .badc{color:var(--red)}.tgst .wait{color:var(--mut);font-weight:400}
 @keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 .lic{display:inline-flex;vertical-align:-3px;color:var(--pri);margin-right:6px}
+.cf{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.4);opacity:0;transition:opacity .22s ease}
+.cf.open{opacity:1}
+.cfb{background:var(--card);color:var(--tx);width:100%;max-width:300px;border-radius:16px;text-align:center;overflow:hidden;transform:scale(1.08);transition:transform .22s ease;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.cf.open .cfb{transform:scale(1)}
+.cfb b{display:block;padding:20px 18px 4px;font-size:17px}
+.cfb p{margin:0;padding:0 18px;color:var(--mut);font-size:14px}
+.cfa{display:flex;border-top:1px solid var(--line);margin-top:18px}
+.cfa button{flex:1;border:0;background:none;padding:13px 0;font-size:17px;color:var(--pri);cursor:pointer;font-family:inherit;transition:background .15s}
+.cfa button+button{border-left:1px solid var(--line)}
+.cfa button:active{background:var(--line)}
+.cfa .dng{color:var(--red);font-weight:600}

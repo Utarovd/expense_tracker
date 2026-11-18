@@ -201,6 +201,18 @@ function openSheet(html) {
 }
 function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; el.classList.remove('open'); setTimeout(() => el.remove(), 300); }
 const sheetEl = () => ovEl && ovEl.firstChild;
+// подтверждение (как alert в iOS): Promise<boolean>
+function ask(title, msg, okLabel = 'Delete') {
+  return new Promise(res => {
+    const el = document.createElement('div'); el.className = 'cf';
+    el.innerHTML = `<div class="cfb" role="alertdialog"><b>${esc(title)}</b>${msg ? `<p>${esc(msg)}</p>` : ''}<div class="cfa"><button data-r="0">Cancel</button><button data-r="1" class="dng">${esc(okLabel)}</button></div></div>`;
+    const done = (v) => { document.removeEventListener('keydown', key, true); el.classList.remove('open'); setTimeout(() => el.remove(), 250); res(v); };
+    const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(false); } if (e.key === 'Enter') { e.preventDefault(); done(true); } };
+    el.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('button'); if (b) done(b.dataset.r === '1'); else if (e.target === el) done(false); });
+    document.addEventListener('keydown', key, true);
+    document.body.appendChild(el); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
+  });
+}
 
 // ---------- роутинг ----------
 const MAIN = ['/', '/transactions', '/stats', '/accounts', '/more'];
@@ -446,7 +458,7 @@ document.addEventListener('click', async (e) => {
       if (!r) return er.textContent = 'No connection to the server';
       if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Too many attempts, wait 15 minutes' : 'Wrong login or password';
       S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); break; }
-    case 'logout': await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
+    case 'logout': if (!(await ask('Log out?', '', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
     case 'add': openTx(null); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
     case 'space': S.space = id; persist(); render(); break;
@@ -461,16 +473,16 @@ document.addEventListener('click', async (e) => {
     case 'addtransfer': openTx(null, 'transfer'); break;
     case 'ftype': F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx(); break;
     case 'txsave': saveTx(); break;
-    case 'txdel': deleteTx(); break;
+    case 'txdel': if (await ask(F.type === 'transfer' ? 'Delete this transfer?' : 'Delete this transaction?', 'This can’t be undone.')) deleteTx(); break;
     case 'accedit': openAcc(id); break;
     case 'accnew': openAcc(null); break;
     case 'fflag': F[id] = F[id] ? 0 : 1; a.classList.toggle('on'); break;
     case 'accsave': saveAcc(); break;
-    case 'accdel': del('accounts', F.acc); closeSheet(); break;
+    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); toast('Deleted'); } break;
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
     case 'catsave': saveCat(); break;
-    case 'catarch': put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); break;
+    case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); break;
     case 'catup': moveCat(-1); break;
     case 'catdown': moveCat(1); break;
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
