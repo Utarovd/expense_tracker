@@ -290,12 +290,19 @@ function initSegs() {
 new MutationObserver(() => { cancelAnimationFrame(initSegs._r); initSegs._r = requestAnimationFrame(initSegs); }).observe(document.documentElement, { childList: true, subtree: true });
 // плашка выбранной вкладки: одна на всё меню, плавно едет между вкладками и за свайпом
 const tabBox = (path) => { const a = document.querySelector(`.nav a[data-go="${path}"]`); return a ? { x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight } : null; };
+// белый текст внутри плашки: копия меню внутри плашки, сдвинутая обратно, поэтому текст делится ровно по краю плашки
+function pillText(el, x, y, tr) {
+  const hi = el.firstElementChild, box = el.parentElement; if (!hi || !box) return;
+  const cs = getComputedStyle(box); hi.style.width = box.clientWidth + 'px'; hi.style.height = box.clientHeight + 'px'; hi.style.padding = cs.padding;
+  hi.style.transition = tr; hi.style.transform = `translate(${-x}px,${-y}px)`;
+}
 function setPill(b, anim) {
   const el = document.querySelector('.navpill'); if (!el || !b) return;
-  el.style.transition = anim ? 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1)' : 'none';
-  el.style.width = b.w + 'px'; el.style.height = b.h + 'px'; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
+  const tr = anim ? 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1),height .22s cubic-bezier(.4,0,.2,1)' : 'none';
+  el.style.transition = tr; el.style.width = b.w + 'px'; el.style.height = b.h + 'px'; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
+  pillText(el, b.x, b.y, anim ? 'transform .22s cubic-bezier(.4,0,.2,1)' : 'none');
 }
-const onTab = (path) => document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.go === path));
+const onTab = (path) => { const hs = document.querySelectorAll('.navhi a'); document.querySelectorAll('.nav a[data-go]').forEach((a, n) => { const on = a.dataset.go === path; a.classList.toggle('on', on); if (hs[n]) hs[n].classList.toggle('on', on); }); };
 function placePill() {
   const main = MAIN.includes(S.route) ? S.route : '/more'; const b = tabBox(main); if (!b) return;
   if (S.pill && Math.abs(S.pill.x - b.x) > 1) { setPill(S.pill, false); requestAnimationFrame(() => requestAnimationFrame(() => setPill(b, true))); } else setPill(b, false);
@@ -304,7 +311,8 @@ function placePill() {
 function nav(on) {
   const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'History'], ['/stats', 'chart', 'Stats'], ['/more', 'user', 'Profile']];
   const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
-  return `<div class="nav"><div><i class="navpill"></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
+  const h = ([p, i, n]) => `<a class="${p === on ? 'on' : ''}" tabindex="-1" aria-hidden="true"><span>${svg(i, 24)}</span>${n}</a>`;
+  return `<div class="nav"><div><i class="navpill"><div class="navhi">${it.slice(0, 2).map(h).join('')}<div></div>${it.slice(2).map(h).join('')}</div></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
 }
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
 const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${monthName(curMonth())}</b><button data-act="mnext">›</button></div>`;
@@ -883,15 +891,20 @@ boot();
 // кнопка «×» очистки поля: видна, пока поле в фокусе и в нём есть текст
 (() => {
   const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'clrx'; btn.setAttribute('aria-label', 'Clear'); btn.tabIndex = -1;
-  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+  btn.innerHTML = '<i><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></i>';
   let cur = null;
   const ok = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && el.offsetParent;
   const place = () => {
     if (!cur || !cur.isConnected || document.activeElement !== cur || !cur.value) { btn.classList.remove('on'); if (cur) cur.classList.remove('hasclr'); return; }
     if (btn.previousElementSibling !== cur) cur.after(btn);
     cur.classList.add('hasclr');
+    const cs = getComputedStyle(cur); const al = cs.textAlign; cur.classList.toggle('clrl', al === 'left' || al === 'start' || al === 'justify');
+    const bg = cs.backgroundColor, m = bg.match(/rgba?\(([^)]+)\)/); const pa = m ? m[1].split(',').slice(0, 3).join(',') : '255,255,255';
+    btn.style.setProperty('--fb', bg); btn.style.setProperty('--fb0', `rgba(${pa},0)`);
+    const bl = parseFloat(cs.borderLeftWidth) || 0, bt = parseFloat(cs.borderTopWidth) || 0, bb = parseFloat(cs.borderBottomWidth) || 0;
+    btn.style.borderRadius = `${cs.borderTopLeftRadius} 0 0 ${cs.borderBottomLeftRadius}`;
     btn.style.left = '0px'; btn.style.top = '0px'; const o = btn.getBoundingClientRect(), r = cur.getBoundingClientRect();
-    btn.style.left = (r.right - 34 - o.left) + 'px'; btn.style.top = (r.top + (r.height - 28) / 2 - o.top) + 'px';
+    btn.style.height = (r.height - bt - bb) + 'px'; btn.style.left = (r.left + bl - o.left) + 'px'; btn.style.top = (r.top + bt - o.top) + 'px';
     btn.classList.add('on');
   };
   const clear = (e) => { e.preventDefault(); e.stopPropagation(); if (!cur) return; const el = cur; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); const n = el.isConnected ? el : document.activeElement; if (n && n.focus) n.focus({ preventScroll: true }); haptic && haptic(); requestAnimationFrame(place); };
@@ -954,11 +967,11 @@ boot();
   function paint(cx) {
     const ts = tabs(); if (!ts.length) return; const lo = ts[0].offsetLeft + ts[0].offsetWidth / 2, hi = ts[ts.length - 1].offsetLeft + ts[ts.length - 1].offsetWidth / 2;
     cx = Math.max(lo, Math.min(hi, cx)); d.cx = cx;
-    const a = near(cx), w = a.offsetWidth, h = a.offsetHeight, y = a.offsetTop;
+    const a = near(cx), G = 5, V = 4; const w = a.offsetWidth + G * 2, h = a.offsetHeight + V * 2, x = cx - w / 2, y = a.offsetTop - V;
     const el = document.querySelector('.navpill'); if (!el) return;
-    el.style.transition = d.started ? 'none' : 'transform .12s ease,width .12s ease';
-    el.style.width = w + 'px'; el.style.height = h + 'px'; el.style.transform = `translate(${cx - w / 2}px,${y}px)` + (lensOn() ? ' scale(1.14)' : ''); el.style.opacity = 1;
-    ts.forEach(t => { const c = t.offsetLeft + t.offsetWidth / 2, k = Math.max(0, 1 - Math.abs(c - cx) / (w * 0.75)); const sp = t.querySelector('span'); if (sp) { sp.style.transition = 'none'; sp.style.transform = lensOn() && k ? `scale(${1 + 0.22 * k})` : ''; } });
+    el.style.transition = d.painted ? 'none' : 'transform .15s cubic-bezier(.2,.8,.2,1),width .15s cubic-bezier(.2,.8,.2,1),height .15s cubic-bezier(.2,.8,.2,1)';
+    el.style.width = w + 'px'; el.style.height = h + 'px'; el.style.transform = `translate(${x}px,${y}px)`; el.style.opacity = 1;
+    pillText(el, x, y, d.painted ? 'none' : 'transform .15s cubic-bezier(.2,.8,.2,1)'); d.painted = true;
     onTab(a.dataset.go); d.target = a.dataset.go;
   }
   document.addEventListener('pointerdown', (e) => {
@@ -969,12 +982,11 @@ boot();
   document.addEventListener('pointermove', (e) => {
     if (!d || e.pointerId !== d.id) return; const dx = e.clientX - d.x0;
     if (!d.started) { if (Math.abs(dx) < 6) return; d.started = true; const nv = document.querySelector('.nav'); nv.classList.add('drag'); document.querySelectorAll('.nav .tch').forEach(x => x.classList.remove('tch')); }
-    paint(e.clientX - d.left);
+    const box = inner(); const r = box.getBoundingClientRect(); paint((e.clientX - r.left) * (box.offsetWidth / r.width));
   });
   function stop(e) {
     if (!d || (e && e.pointerId !== d.id)) return; const d0 = d; d = null;
     const nv = document.querySelector('.nav'); if (nv) nv.classList.remove('drag');
-    tabs().forEach(t => { const sp = t.querySelector('span'); if (sp) { sp.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)'; sp.style.transform = ''; } });
     if (!d0.started) return;
     justDragged = true; setTimeout(() => { justDragged = false; }, 50);
     const path = d0.target || (MAIN.includes(S.route) ? S.route : '/more');
