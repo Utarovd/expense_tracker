@@ -153,3 +153,10 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .navadd{align-items:flex-end;padding:0 4px 4px}
 .navadd button{width:100%;max-width:66px;height:76px;margin-top:0;border-radius:20px;transform:translateY(0)}
 .navadd button:active{transform:scale(.94)}
+/* меню: 5 равных ячеек, одинаковые плашки */
+.nav>div{display:grid;grid-template-columns:repeat(5,1fr);align-items:end}
+.nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;height:58px;margin:6px 4px 4px;padding:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10.5px;letter-spacing:-.1px}
+.nav a.on{font-weight:500}
+.nav a span{width:auto;height:26px;margin:0 0 3px}
+.navadd{height:100%;display:flex;align-items:flex-end;justify-content:center;padding:0 0 4px}
+.navadd button{width:66px;max-width:none;height:66px;border-radius:33px;margin:0}
