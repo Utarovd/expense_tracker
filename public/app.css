@@ -67,3 +67,8 @@ input.f,select.f,textarea.f{width:100%;border:0;background:var(--bg);border-radi
 .err{color:var(--red);font-size:14px;margin:6px 0}
 code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all;font-size:13px}
 .tgst{display:inline-block;margin-left:6px;opacity:0;transform:scale(.6);transition:opacity .3s ease,transform .3s ease}.tgst.on{opacity:1;transform:scale(1)}
+.ico{color:var(--pri)}.ico .i{display:block}.ico .emo{font-size:22px}
+.nav a span{height:26px;display:flex;align-items:center;justify-content:center;margin-bottom:2px}.nav a .i{display:block}
+.tgst{opacity:1;transform:none;vertical-align:-4px}.tgst i{display:inline-flex;font-style:normal;animation:pop .3s ease}.tgst .okc{color:var(--grn)}.tgst .badc{color:var(--red)}.tgst .wait{color:var(--mut);font-weight:400}
+@keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+.lic{display:inline-flex;vertical-align:-3px;color:var(--pri);margin-right:6px}

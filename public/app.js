@@ -106,7 +106,38 @@ const toBase = (minor, cur) => cur === 'USD' ? Math.round(minor * curRate()) : m
 function totalBase() { return accounts().filter(a => !a.hidden && !a.exclude_from_total).reduce((s, a) => s + toBase(balance(a), a.currency), 0); }
 function catPath(id) { const c = byId('categories', id); if (!c) return ''; const p = c.parent_id && byId('categories', c.parent_id); return p ? p.name + ' › ' + c.name : c.name; }
 const rootOf = (id) => { const c = byId('categories', id); return c && c.parent_id ? byId('categories', c.parent_id) : c; };
-const catIcon = (id) => { const r = rootOf(id); return (r && r.icon) || '•'; };
+// ---------- иконки (inline SVG, линейные) ----------
+const IC = {
+  home: 'M3.5 10.5 12 3.5l8.5 7V19a1.5 1.5 0 0 1-1.5 1.5h-4v-6h-6v6H5A1.5 1.5 0 0 1 3.5 19z',
+  list: 'M8.5 6.5h12M8.5 12h12M8.5 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01',
+  chart: 'M20.5 13A8.5 8.5 0 1 1 11 3.5V13zM14.5 3.6a8.5 8.5 0 0 1 5.9 5.9h-5.9z',
+  card: 'M4.5 5h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM2.5 10h19M6.5 15h4',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5a7.5 7.5 0 0 1 15 0',
+  target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM12 12h.01',
+  grid: 'M5 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM15 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM5 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM15 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
+  rate: 'M7 20V4M3.5 7.5 7 4l3.5 3.5M17 4v16M13.5 16.5 17 20l3.5-3.5',
+  sliders: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+  cash: 'M3.5 6.5h17a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 10v4M18 10v4',
+  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.4 2.5 3.5 5.5 3.5 9s-1.1 6.5-3.5 9c-2.4-2.5-3.5-5.5-3.5-9S9.6 5.5 12 3z',
+  transfer: 'M4 8.5h15.5M15.5 4.5l4 4-4 4M20 15.5H4.5M8.5 11.5l-4 4 4 4',
+  food: 'M6 3v6.5a3 3 0 0 0 6 0V3M9 3v18M18 21V3c-2.2 1.2-3.5 3.8-3.5 7.5V13H18',
+  game: 'M7 7.5h10a4.5 4.5 0 0 1 4.5 4.5v.5a4 4 0 0 1-7 2.7l-.6-.7h-3.8l-.6.7a4 4 0 0 1-7-2.7V12A4.5 4.5 0 0 1 7 7.5zM7.5 10.5v3M6 12h3M15.5 11h.01M17.5 13h.01',
+  car: 'M5 16.5h14V12l-2-5H7l-2 5zM3.5 12h17M7 16.5V19M17 16.5V19M7.5 14h.01M16.5 14h.01',
+  receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3',
+  family: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.3a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6',
+  bag: 'M5 8h14l-1 12.5H6zM9 8V6.5a3 3 0 0 1 6 0V8',
+  heart: 'M12 20s-8-4.6-8-10.6A4.4 4.4 0 0 1 12 6.6a4.4 4.4 0 0 1 8 2.8C20 15.4 12 20 12 20z',
+  wallet: 'M4 7a2 2 0 0 1 2-2h11v4M4 7v11a2 2 0 0 0 2 2h14V9H6a2 2 0 0 1-2-2zM16.5 14.5h.01',
+  plus: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v8M8 12h8',
+  tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
+  ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
+  bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
+};
+const svg = (n, sz = 22) => `<svg class="i" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
+const CATIC = { food: 'food', leisure: 'game', transport: 'car', expenses: 'receipt', family: 'family', shopping: 'bag', health: 'heart', salary: 'wallet', 'other income': 'plus' };
+const rootIcon = (r, sz) => !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
+const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
+const catIcon = (id) => rootIcon(rootOf(id));
 function spentByRoot(m, space = S.space) {
   const [a, b] = monthRange(m); const out = {}; let total = 0;
   for (const t of rows('transactions')) {
@@ -194,8 +225,8 @@ function render(soft) {
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
 function nav(on) {
-  const it = [['/', '🏠', 'Home'], ['/transactions', '☰', 'Transactions'], ['/stats', '📊', 'Stats'], ['/accounts', '💳', 'Accounts'], ['/more', '👤', 'Profile']];
-  return `<div class="nav"><div>${it.map(([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${i}</span>${n}</a>`).join('')}</div></div>`;
+  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'Transactions'], ['/stats', 'chart', 'Stats'], ['/accounts', 'card', 'Accounts'], ['/more', 'user', 'Profile']];
+  return `<div class="nav"><div>${it.map(([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`).join('')}</div></div>`;
 }
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
 const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${monthName(curMonth())}</b><button data-act="mnext">›</button></div>`;
@@ -206,7 +237,7 @@ function txRow(t) {
   const sub = isT ? (t.note || '') : (catPath(t.category_id) || 'no category');
   const sign = t.type === 'income' || (isT && t.amount > 0) ? '+' : '−'; const cls = sign === '+' ? 'pos' : 'neg';
   const src = t.source === 'wallet' ? ' · Wallet' : t.source === 'sms' ? ' · SMS' : t.source === 'payme' ? ' · Payme' : t.source === 'telegram' ? ' · bot' : '';
-  return `<div class="row" data-act="tx" data-id="${t.id}"><div class="ico">${isT ? '🔁' : catIcon(t.category_id)}</div><div class="grow"><b>${esc(title)}</b><span class="sub">${esc(sub)} · ${esc(acc ? acc.name : '?')} · ${hm(t.occurred_at)}${src}</span></div><div class="amt ${cls}">${sign}${fmt(Math.abs(t.amount), t.currency)}</div></div>`;
+  return `<div class="row" data-act="tx" data-id="${t.id}"><div class="ico">${isT ? svg('transfer') : catIcon(t.category_id)}</div><div class="grow"><b>${esc(title)}</b><span class="sub">${esc(sub)} · ${esc(acc ? acc.name : '?')} · ${hm(t.occurred_at)}${src}</span></div><div class="amt ${cls}">${sign}${fmt(Math.abs(t.amount), t.currency)}</div></div>`;
 }
 
 // ---------- страницы ----------
@@ -220,7 +251,7 @@ function pgHome() {
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
   <div class="card"><div class="lbl">Balance</div><div class="big">${fmt(tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
-  <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${a.type === 'cash' ? '💵' : a.type === 'card_visa' ? '🌐' : '💳'}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
+  <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
   <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || '<div class="sub" style="padding:10px 0">Nothing yet</div>'}</div>`;
 }
 function pgTrans() {
@@ -251,28 +282,28 @@ function pgStats() {
   return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>${mnav()}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
   <div class="card" style="text-align:center"><div class="lbl">Spent this month</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div style="display:flex;justify-content:center;margin:12px 0">${donut}</div>
-  ${items.map((it, i) => `<div class="legend"><i style="background:${PAL[i % PAL.length]}"></i><span class="grow">${it.c ? esc((it.c.icon || '') + ' ' + it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
+  ${items.map((it, i) => `<div class="legend"><i style="background:${PAL[i % PAL.length]}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
   <div class="card"><div class="lbl">By day</div>${bars}</div>`;
 }
 function pgAccounts() {
   const accs = accounts();
   return `<div class="top"><h1>Accounts</h1>${spaceSwitch()}</div>
-  <div class="card">${accs.map(a => `<div class="row" data-act="accedit" data-id="${a.id}"><div class="ico">${a.type === 'cash' ? '💵' : a.type === 'card_visa' ? '🌐' : '💳'}</div><div class="grow"><b>${esc(a.name)}${a.card_last4 ? ' ···' + esc(a.card_last4) : ''}</b><span class="sub">${a.currency}${a.hidden ? ' · hidden' : ''}${a.exclude_from_total ? ' · excluded' : ''}</span></div><div class="amt">${fmt(balance(a), a.currency)}</div></div>`).join('')}</div>
+  <div class="card">${accs.map(a => `<div class="row" data-act="accedit" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}${a.card_last4 ? ' ···' + esc(a.card_last4) : ''}</b><span class="sub">${a.currency}${a.hidden ? ' · hidden' : ''}${a.exclude_from_total ? ' · excluded' : ''}</span></div><div class="amt">${fmt(balance(a), a.currency)}</div></div>`).join('')}</div>
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/budget', '🎯', 'Budget & limits'], ['/categories', '🗂', 'Categories'], ['/rate', '💱', 'USD rate'], ['/settings', '⚙️', 'Settings, Telegram']];
-  return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${i}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
+  const l = [['/budget', 'target', 'Budget & limits'], ['/categories', 'grid', 'Categories'], ['/rate', 'rate', 'USD rate'], ['/settings', 'sliders', 'Settings, Telegram']];
+  return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
   const m = curMonth(); const sp = spentByRoot(m); const tot = budgetFor(null, m);
   const roots = cats('expense').filter(c => !c.parent_id && !c.archived);
   const line = (name, spent, b, cat) => { const lim = b ? b.limit_amount : 0; const pct = lim ? Math.min(100, Math.round(spent / lim * 100)) : 0; return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="grow">${name}</b><input class="f" style="width:130px;margin:0;text-align:right" inputmode="decimal" data-bud="${cat || ''}" placeholder="limit" value="${lim ? Math.round(lim / 100) : ''}"></div><div class="bar"><i class="${lim && spent > lim ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">spent ${fmt(spent, 'UZS')}${lim ? ' · left ' + fmt(lim - spent, 'UZS') : ''}</div></div>`; };
-  return `<div class="top"><h1>Budget</h1>${spaceSwitch()}</div>${mnav()}<div class="card"><div class="lbl">The limit applies to this and following months</div>${line('Whole month', sp.total, tot, '')}${roots.map(c => line(esc((c.icon || '') + ' ' + c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
+  return `<div class="top"><h1>Budget</h1>${spaceSwitch()}</div>${mnav()}<div class="card"><div class="lbl">The limit applies to this and following months</div>${line('Whole month', sp.total, tot, '')}${roots.map(c => line(`<span class="lic">${rootIcon(c, 18)}</span>` + esc(c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
 }
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
-  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div>${roots.map(r => `<div class="card"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${r.icon || '•'}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div><span class="sub">✎</span></div>${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div><span class="sub">✎</span></div>`).join('')}<div class="row" data-act="catnew" data-id="${r.id}" style="padding-left:56px;color:var(--pri)">+ subcategory</div></div>`).join('')}<button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
+  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div>${roots.map(r => `<div class="card"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div><span class="sub">✎</span></div>${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div><span class="sub">✎</span></div>`).join('')}<div class="row" data-act="catnew" data-id="${r.id}" style="padding-left:56px;color:var(--pri)">+ subcategory</div></div>`).join('')}<button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
 }
 function pgRate() {
   const mode = setting('rate_mode', 'auto'), kind = setting('rate_kind', 'buy'); const r = S.rates || {};
@@ -283,14 +314,14 @@ function pgRate() {
   <div class="lbl" style="margin-top:14px">Manual rate (UZS per $1)</div><input class="f" id="ratem" inputmode="decimal" value="${esc(setting('rate_manual', ''))}" placeholder="e.g. 12700"></div>
   <div class="card"><div class="lbl">Now on the website</div><div style="margin-top:6px">Buy: <b>${r.buy ? Math.round(r.buy) : '—'}</b> · Sell: <b>${r.sell ? Math.round(r.sell) : '—'}</b> · CBU: <b>${r.cbu ? Math.round(r.cbu) : '—'}</b></div><div class="sub">Source: ${r.source === 'ipakyuli' ? 'Ipak Yuli' : r.source === 'cbu' ? 'cbu.uz (fallback)' : '—'}${r.fetched_at ? ' · ' + dd(r.fetched_at) + ' ' + hm(r.fetched_at) : ''}</div><div style="margin-top:10px">In use: <b>${Math.round(curRate())}</b></div><button class="btn sec" style="margin-top:12px" data-act="raterefresh">Refresh</button></div>`;
 }
-const TG_WHY = { no_token: '', tg_unreachable: ' · Telegram not reachable', no_webhook: ' · webhook not connected', error: ' · last delivery failed', not_linked: '' };
-const tgBadge = () => S.tgst ? (S.tgst.ok ? '✅' : '❌') : '';
+const TG_WHY = { no_token: '', tg_unreachable: ' · Telegram not reachable', no_webhook: ' · webhook not connected', error: ' · last delivery failed', check_failed: ' · status check failed', not_linked: '' };
+const tgBadge = () => S.tgst ? (S.tgst.ok ? `<i class="okc">${svg('ok', 20)}</i>` : `<i class="badc">${svg('bad', 20)}</i>`) : '<i class="wait">…</i>';
 const tgWhy = () => S.tgst && !S.tgst.ok ? (TG_WHY[S.tgst.reason] || '') : '';
 async function checkTg() {
   S.tgstAt = now();
-  const r = await api('/api/tg/status').catch(() => null); if (!r || !r.ok) return;
-  S.tgst = r.data; const el = document.getElementById('tgst'), why = document.getElementById('tgwhy');
-  if (el) { el.textContent = tgBadge(); requestAnimationFrame(() => el.classList.add('on')); }
+  const r = await api('/api/tg/status').catch(() => null);
+  S.tgst = r && r.ok ? r.data : { ok: false, reason: 'check_failed' }; const el = document.getElementById('tgst'), why = document.getElementById('tgwhy');
+  if (el) { el.innerHTML = tgBadge(); requestAnimationFrame(() => el.classList.add('on')); }
   if (why) why.textContent = tgWhy();
 }
 function pgSettings() {
@@ -298,7 +329,7 @@ function pgSettings() {
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto'; const me = S.me || {};
   return `<div class="top"><h1>Settings</h1></div>
   <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
-  <div class="card"><b>Telegram bot <span id="tgst" class="tgst${S.tgst ? ' on' : ''}">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
+  <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div>` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
   <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
@@ -324,7 +355,7 @@ function drawTx() {
   const accs = accounts(); const isT = F.type === 'transfer';
   const opts = (sel) => accs.map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.name)} (${a.currency})</option>`).join('');
   const kind = F.type === 'income' ? 'income' : 'expense';
-  const catOpts = cats(kind).filter(c => !c.parent_id && !c.archived).map(p => `<optgroup label="${esc((p.icon || '') + ' ' + p.name)}"><option value="${p.id}" ${F.category === p.id ? 'selected' : ''}>${esc(p.name)}</option>${cats(kind).filter(c => c.parent_id === p.id && !c.archived).map(c => `<option value="${c.id}" ${F.category === c.id ? 'selected' : ''}>${esc(p.name)} › ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
+  const catOpts = cats(kind).filter(c => !c.parent_id && !c.archived).map(p => `<optgroup label="${esc(p.name)}"><option value="${p.id}" ${F.category === p.id ? 'selected' : ''}>${esc(p.name)}</option>${cats(kind).filter(c => c.parent_id === p.id && !c.archived).map(c => `<option value="${c.id}" ${F.category === c.id ? 'selected' : ''}>${esc(p.name)} › ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
   const fa = isT ? byId('accounts', F.from) : byId('accounts', F.account), ta = isT ? byId('accounts', F.to) : null;
   const cross = isT && fa && ta && fa.currency !== ta.currency;
   openSheet(`<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
