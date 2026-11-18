@@ -728,7 +728,7 @@ function applyTheme() {
   document.documentElement.dataset.nav = tryLS(() => localStorage.getItem('navstyle')) || 'glass';
   const ic = tryLS(() => localStorage.getItem('appicon')) || 'a'; const L = (id, h) => { const el = document.getElementById(id); if (el && el.getAttribute('href') !== h) el.setAttribute('href', h); };
   L('lati', `/icon-${ic}-180.png`); L('lfav', `/icon-${ic}-192.png`); L('lman', `/manifest-${ic}.webmanifest`);
-  const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = dark ? '#0f1115' : '#f3f4f8';
+  const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = dark ? '#16171b' : '#f8f5ee';
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 async function logoutLocal() { S.user = null; TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; }); S.cursor = 0; S.space = null; S.me = null; await idb.clear(); closeSheet(); render(); }

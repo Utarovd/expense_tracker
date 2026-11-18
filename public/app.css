@@ -284,3 +284,11 @@ html{background:var(--bg)}
 .navadd button::after{content:"";position:absolute;left:13px;right:13px;top:5px;height:21px;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(255,255,255,0));pointer-events:none}
 .navadd button .i{position:relative;z-index:1;stroke-width:2.8;filter:drop-shadow(0 2px 0 rgba(8,16,40,.3)) drop-shadow(0 -1px 0 rgba(255,255,255,.55))}
 .navadd button:active,:root .navadd button:active{transform:translateY(5px);box-shadow:inset 0 3px 2px rgba(255,255,255,.5),inset 0 -2px 5px rgba(170,90,0,.35),0 1px 0 #c27c00,0 2px 0 #9a6100,0 4px 8px rgba(20,24,34,.3)}
+/* свайп: соседняя страница без своего фона, общий фон неподвижен */
+.swnb{background:transparent!important}
+/* полоса статус-бара только в установленном приложении */
+.sbar{display:none}
+@media (display-mode: standalone){.sbar{display:block}}
+/* плашка вкладки прямоугольнее */
+.navpill,:root[data-nav=glass] .navpill{border-radius:14px}
+.nav a,:root[data-nav=glass] .nav a{border-radius:14px}
