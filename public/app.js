@@ -292,7 +292,7 @@ function txRow(t) {
   const acc = byId('accounts', t.account_id); const isT = t.type === 'transfer';
   const title = isT ? 'Transfer' : (t.note || t.merchant || catPath(t.category_id) || 'Untitled');
   const sub = isT ? (t.note || '') : (catPath(t.category_id) || 'no category');
-  const sign = t.type === 'income' || (isT && t.amount > 0) ? '+' : '−'; const cls = sign === '+' ? 'pos' : 'neg';
+  const sign = t.type === 'income' || (isT && t.amount > 0) ? '+' : '−'; const cls = isT ? 'trf' : sign === '+' ? 'pos' : 'neg';
   const src = t.source === 'wallet' ? ' · Wallet' : t.source === 'sms' ? ' · SMS' : t.source === 'payme' ? ' · Payme' : t.source === 'telegram' ? ' · bot' : '';
   return `<div class="row" data-act="tx" data-id="${t.id}"><div class="ico">${isT ? svg('transfer') : catIcon(t.category_id)}</div><div class="grow"><b>${esc(title)}</b><span class="sub">${esc(sub)} · ${esc(acc ? acc.name : '?')} · ${hm(t.occurred_at)}${src}</span></div><div class="amt ${cls}">${sign}${fmt(Math.abs(t.amount), t.currency)}</div></div>`;
 }
@@ -391,7 +391,7 @@ function trendChart(m, disp, rate) {
     <text x="${i * 50 + 25}" y="${top + H - he - 6}" text-anchor="middle" class="tv${cur ? ' on' : ''}">${v.e ? shortAmt(v.e, disp, rate) : ''}</text>
     <text x="${i * 50 + 25}" y="${top + H + 17}" text-anchor="middle" class="tm${cur ? ' on' : ''}">${MSH(v.m)}</text></g>`; }).join('');
   const avg = vals.reduce((x, v) => x + v.e, 0) / 6;
-  return `<div class="card"><div class="lbl">Expenses · last 6 months</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%">${bars}</svg><div class="tleg">Average ${shortAmt(avg, disp, rate)} / month · tap a month to open it</div></div>`;
+  return `<div class="card"><div class="lbl">Expenses · last 6 months</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%"><defs><linearGradient id="gexp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6b6b"/><stop offset="1" stop-color="#c81e3a"/></linearGradient></defs>${bars}</svg><div class="tleg">Average ${shortAmt(avg, disp, rate)} / month · tap a month to open it</div></div>`;
 }
 function pgStats() {
   const m = curMonth(); const per = S.per || '1M'; const rng = perRange(m, per); const sp = spentByRoot(m, S.space, rng); const disp = S.dispCur || 'UZS'; const rate = curRate();
@@ -415,7 +415,7 @@ function pgStats() {
   <div class="seg per">${['1M', '3M', '1Y', 'All'].map(c => `<button class="${per === c ? 'on' : ''}" data-act="per" data-id="${c}">${c}</button>`).join('')}</div>
   ${per === 'All' ? '<div class="mnav"><b>All time</b></div>' : `<div class="mnav"><button data-act="mprev" data-id="${step}">‹</button><b>${perLabel(m, per)}</b><button data-act="mnext" data-id="${step}">›</button></div>`}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
-  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donut}</div>
+  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big neg">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donut}</div>
   ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
   ${trendChart(m, disp, rate)}
   ${per === '1M' ? `<div class="card"><div class="lbl">By day</div>${bars}</div>` : ''}`;
@@ -534,14 +534,14 @@ function drawTx() {
   const fa = isT ? byId('accounts', F.from) : byId('accounts', F.account), ta = isT ? byId('accounts', F.to) : null;
   const cross = isT && fa && ta && fa.currency !== ta.currency;
   openSheet(`<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
-  <div class="seg" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
-  <input class="f amtin" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
+  <div class="seg tt" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
+  <input class="f amtin amt-${F.type}" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
   ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
       : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div><select class="f" data-f="category"><option value="">No category</option>${catOpts}</select>`}
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
   ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${fmtRate(curRate())} (from settings)</div>` : ''}
-  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full" data-act="txsave">Save</button></div>`);
+  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full save-${F.type}" data-act="txsave">Save</button></div>`);
   const am = document.getElementById('f-amount'); if (am && !F.id && !F.amount) setTimeout(() => am.focus(), 320);
 }
 function saveTx() {

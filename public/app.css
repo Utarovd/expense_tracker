@@ -230,3 +230,23 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .nav a::before{display:none}
 .nav a{z-index:1}
 .nav a.on{color:#fff}
+
+/* цвета типов операций: Expense красный, Income зелёный, Transfer синий (градиенты) */
+:root{--g-exp:linear-gradient(135deg,#ff6b6b,#d1213b);--g-inc:linear-gradient(135deg,#34d399,#05875f);--g-trf:linear-gradient(135deg,#60a5fa,#1d4ed8);--c-trf:#2563eb}
+:root[data-theme=dark]{--g-exp:linear-gradient(135deg,#ff8a8a,#ef4444);--g-inc:linear-gradient(135deg,#6ee7b7,#10b981);--g-trf:linear-gradient(135deg,#93c5fd,#3b82f6);--c-trf:#60a5fa}
+.neg,.pos,.trf,.day .neg,.day .pos{-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.neg,.day .neg{background-image:var(--g-exp)}
+.pos,.day .pos{background-image:var(--g-inc)}
+.trf{color:var(--c-trf);background-image:var(--g-trf);font-weight:600}
+.seg.tt button.on[data-id=expense]{background:var(--g-exp);color:#fff;box-shadow:0 4px 12px rgba(209,33,59,.3)}
+.seg.tt button.on[data-id=income]{background:var(--g-inc);color:#fff;box-shadow:0 4px 12px rgba(5,135,95,.3)}
+.seg.tt button.on[data-id=transfer]{background:var(--g-trf);color:#fff;box-shadow:0 4px 12px rgba(29,78,216,.3)}
+.btn.save-expense{background:var(--g-exp)!important;color:#fff!important}
+.btn.save-income{background:var(--g-inc)!important;color:#fff!important}
+.btn.save-transfer{background:var(--g-trf)!important;color:#fff!important}
+.ico:has(.i-transfer){background:#e6efff;color:#2563eb}:root[data-theme=dark] .ico:has(.i-transfer){background:#1b2a4a;color:#7fb2ff}
+.trend .bx{fill:url(#gexp);opacity:.35}
+.trend .bx.on{opacity:1}
+:root[data-theme=dark] .trend .bx{fill:url(#gexp)}
+.amtin.amt-expense{color:#d1213b}.amtin.amt-income{color:#05875f}.amtin.amt-transfer{color:#1d4ed8}
+:root[data-theme=dark] .amtin.amt-expense{color:#ff7b7b}:root[data-theme=dark] .amtin.amt-income{color:#4ade9a}:root[data-theme=dark] .amtin.amt-transfer{color:#7fb2ff}
