@@ -174,6 +174,8 @@ const dtLocal = (ts) => { const d = new Date(ts + TZ); const p = n => String(n).
 const fromLocal = (s) => { const m = s.match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+)/); return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - TZ; };
 const dd = (ts) => { const d = new Date(ts + TZ); const p = n => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}.${p(d.getUTCMonth() + 1)}`; };
 const hm = (ts) => { const d = new Date(ts + TZ); const p = n => String(n).padStart(2, '0'); return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`; };
+// группировка разрядов: 1234567,5 → 1 234 567,5
+const grp = (v) => { v = String(v ?? '').replace(/\s/g, ''); const i = v.search(/[.,]/); const int = i > -1 ? v.slice(0, i) : v; const rest = i > -1 ? v.slice(i) : ''; return int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + rest; };
 const num = (s) => { s = String(s ?? '').replace(/\s/g, ''); if (/,\d{1,2}$/.test(s)) s = s.replace(',', '.'); else s = s.replace(/,/g, ''); const n = parseFloat(s); return isNaN(n) ? NaN : n; };
 
 // ---------- создание операций ----------
@@ -417,7 +419,7 @@ function pgMore() {
 function pgBudget() {
   const m = curMonth(); const sp = spentByRoot(m); const tot = budgetFor(null, m);
   const roots = cats('expense').filter(c => !c.parent_id && !c.archived);
-  const line = (name, spent, b, cat) => { const lim = b ? b.limit_amount : 0; const pct = lim ? Math.min(100, Math.round(spent / lim * 100)) : 0; return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="grow">${name}</b><input class="f" style="width:130px;margin:0;text-align:right" inputmode="decimal" data-bud="${cat || ''}" placeholder="limit" value="${lim ? Math.round(lim / 100) : ''}"></div><div class="bar"><i class="${lim && spent > lim ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">spent ${fmt(spent, 'UZS')}${lim ? ' · left ' + fmt(lim - spent, 'UZS') : ''}</div></div>`; };
+  const line = (name, spent, b, cat) => { const lim = b ? b.limit_amount : 0; const pct = lim ? Math.min(100, Math.round(spent / lim * 100)) : 0; return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="grow">${name}</b><input class="f" style="width:130px;margin:0;text-align:right" inputmode="decimal" data-bud="${cat || ''}" placeholder="limit" value="${lim ? grp(Math.round(lim / 100)) : ''}"></div><div class="bar"><i class="${lim && spent > lim ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">spent ${fmt(spent, 'UZS')}${lim ? ' · left ' + fmt(lim - spent, 'UZS') : ''}</div></div>`; };
   return `<div class="top"><h1>Budget</h1>${spaceSwitch()}</div>${mnav()}<div class="card"><div class="lbl">The limit applies to this and following months</div>${line('Whole month', sp.total, tot, '')}${roots.map(c => line(`<span class="lic">${rootIcon(c, 18)}</span>` + esc(c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
 }
 function pgCats() {
@@ -466,7 +468,7 @@ function pgRate() {
   <div class="row" style="cursor:default"><div class="grow"><b>Auto rate (Ipak Yuli)</b><span class="sub">fetched from the bank’s website</span></div><div class="sw ${mode === 'auto' ? 'on' : ''}" data-act="ratemode"></div></div>
   <div class="lbl" style="margin-top:12px">Which rate to use</div><div class="seg" style="margin:6px 0 12px;width:max-content"><button class="${kind === 'buy' ? 'on' : ''}" data-act="ratekind" data-id="buy">Bank buys</button><button class="${kind === 'sell' ? 'on' : ''}" data-act="ratekind" data-id="sell">Bank sells</button></div>
   <div class="sub">Buy is lower (the bank buys dollars from you). Sell is what you pay to buy dollars.</div>
-  <div class="lbl" style="margin-top:14px">Manual rate (UZS per $1)</div><input class="f" id="ratem" inputmode="decimal" value="${esc(setting('rate_manual', ''))}" placeholder="e.g. 12700"></div>
+  <div class="lbl" style="margin-top:14px">Manual rate (UZS per $1)</div><input class="f" id="ratem" inputmode="decimal" value="${esc(grp(setting('rate_manual', '')))}" placeholder="e.g. 12700"></div>
   <div class="card"><div class="lbl">Now on the website</div><div style="margin-top:6px">Buy: <b>${r.buy ? fmtRate(r.buy) : '—'}</b> · Sell: <b>${r.sell ? fmtRate(r.sell) : '—'}</b> · CBU: <b>${r.cbu ? fmtRate(r.cbu) : '—'}</b></div><div class="sub">Source: ${r.source === 'ipakyuli' ? 'Ipak Yuli' : r.source === 'cbu' ? 'cbu.uz (fallback)' : '—'}${r.fetched_at ? ' · ' + dd(r.fetched_at) + ' ' + hm(r.fetched_at) : ''}</div><div style="margin-top:10px">In use: <b>${fmtRate(curRate())}</b></div><button class="btn sec" style="margin-top:12px" data-act="raterefresh">Refresh</button></div>`;
 }
 const TG_WHY = { no_token: '', tg_unreachable: ' · Telegram not reachable', no_webhook: ' · webhook not connected', error: ' · last delivery failed', check_failed: ' · status check failed', not_linked: '' };
@@ -517,8 +519,8 @@ function drawTx() {
   const cross = isT && fa && ta && fa.currency !== ta.currency;
   openSheet(`<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
   <div class="seg" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
-  <input class="f amtin" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(F.amount)}" data-f="amount" ${''}>
-  ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(F.amount2)}" placeholder="amount received">` : ''}`
+  <input class="f amtin" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
+  ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
       : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div><select class="f" data-f="category"><option value="">No category</option>${catOpts}</select>`}
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
@@ -558,7 +560,7 @@ function openAcc(id) {
   openSheet(`<h2>${id ? 'Account' : 'New account'}</h2><div class="lbl">Name</div><input class="f" data-f="name" value="${esc(a.name)}">
   <div class="lbl">Type</div><select class="f" data-f="type" ${id ? 'disabled' : ''}><option value="cash" ${a.type === 'cash' ? 'selected' : ''}>Cash</option><option value="card_uzs" ${a.type === 'card_uzs' ? 'selected' : ''}>UZS card</option><option value="card_visa" ${a.type === 'card_visa' ? 'selected' : ''}>Visa / USD</option></select>
   <div class="lbl">Card last 4 digits (for auto-import)</div><input class="f" data-f="card_last4" maxlength="4" inputmode="numeric" value="${esc(a.card_last4)}">
-  <div class="lbl">Opening balance</div><input class="f" data-f="opening" inputmode="decimal" value="${esc(F.opening)}">
+  <div class="lbl">Opening balance</div><input class="f" data-f="opening" inputmode="decimal" value="${esc(grp(F.opening))}">
   <div class="row" style="cursor:default"><div class="grow">Hide</div><div class="sw ${a.hidden ? 'on' : ''}" data-act="fflag" data-id="hidden"></div></div>
   <div class="row" style="cursor:default"><div class="grow">Exclude from total</div><div class="sw ${a.exclude_from_total ? 'on' : ''}" data-act="fflag" data-id="exclude_from_total"></div></div>
   <div style="display:flex;gap:10px;margin-top:14px">${id ? '<button class="btn red" data-act="accdel">Delete</button>' : ''}<button class="btn full" data-act="accsave">Save</button></div>`);
@@ -660,12 +662,16 @@ document.addEventListener('input', (e) => {
     let v = el.value, c = v;
     if (el.inputMode === 'numeric') c = v.replace(/\D/g, '');
     else { c = v.replace(/[^\d.,\s]/g, ''); const i = c.search(/[.,]/); if (i > -1) c = c.slice(0, i + 1) + c.slice(i + 1).replace(/[.,]/g, ''); }
-    if (c !== v) { const p = Math.max(0, (el.selectionStart || c.length) - (v.length - c.length)); el.value = c; try { el.setSelectionRange(p, p); } catch (x) { /* */ } }
+    if (el.inputMode === 'decimal') {
+      const caret = el.selectionStart ?? v.length; const before = v.slice(0, caret).replace(/[^\d.,]/g, '').length;
+      c = grp(c);
+      if (c !== v) { el.value = c; let k = 0, p = 0; while (p < c.length && k < before) { if (/[\d.,]/.test(c[p])) k++; p++; } try { el.setSelectionRange(p, p); } catch (x) { /* */ } }
+    } else if (c !== v) { const p = Math.max(0, (el.selectionStart || c.length) - (v.length - c.length)); el.value = c; try { el.setSelectionRange(p, p); } catch (x) { /* */ } }
   }
   if (el.dataset.f) { F[el.dataset.f] = el.value; if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
   if (el.id === 'srch') { S.q = el.value; const p = el.selectionStart; render(); const n = document.getElementById('srch'); if (n) { n.focus(); n.setSelectionRange(p, p); } }
   if (el.dataset.bud !== undefined) { clearTimeout(el._t); el._t = setTimeout(() => saveBudget(el.dataset.bud, el.value), 700); }
-  if (el.id === 'ratem') { clearTimeout(el._t); el._t = setTimeout(() => setSetting('rate_manual', el.value.replace(',', '.')), 600); }
+  if (el.id === 'ratem') { clearTimeout(el._t); el._t = setTimeout(() => setSetting('rate_manual', el.value.replace(/\s/g, '').replace(',', '.')), 600); }
 });
 document.addEventListener('change', (e) => { const el = e.target; if (el.dataset.f && F.type === 'transfer' && ['from', 'to'].includes(el.dataset.f)) drawTx(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'qa' && e.target.value.trim()) { quickAdd(e.target.value); e.target.value = ''; } if (e.key === 'Enter' && e.target.id === 'pw') document.querySelector('[data-act=login]').click(); });
