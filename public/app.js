@@ -92,8 +92,9 @@ function curRate() {
   const r = S.rates || {}; const k = setting('rate_kind', 'buy');
   return r[k] || r.cbu || man || 12700;
 }
+const fmtRate = (r) => Math.round(r).toLocaleString('ru-RU').replace(/\s/g, ' ') + ' UZS';
 function fmt(minor, cur) {
-  if (S.hide) return '•••••';
+  if (S.hide) return '*****';
   const v = minor / 100;
   if (cur === 'USD') return (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (v < 0 ? '−' : '') + Math.abs(Math.round(v)).toLocaleString('ru-RU').replace(/ /g, ' ');
@@ -306,7 +307,7 @@ function pgHome() {
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
-  <div class="card hero"><button class="eyeb" data-act="hide" aria-label="${S.hide ? 'Show amounts' : 'Hide amounts'}">${svg(S.hide ? 'eye' : 'eyeoff', 22)}</button><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')} UZS</div><div class="sub">≈ $${S.hide ? '•••••' : (tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  <div class="card hero"><button class="eyeb" data-act="hide" aria-label="${S.hide ? 'Show amounts' : 'Hide amounts'}">${svg(S.hide ? 'eye' : 'eyeoff', 22)}</button><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')} UZS</div><div class="sub">≈ $${S.hide ? '*****' : (tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${fmtRate(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
   <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')} UZS</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   ${limitsCard(m, sp)}
@@ -347,7 +348,7 @@ function perLabel(m, per) {
   const f = shiftMonth(m, 1 - PERN[per]); return `${MSH(f)} ${f.split('-')[0] !== m.split('-')[0] ? f.split('-')[0] + ' ' : ''}– ${MSH(m)} ${m.split('-')[0]}`;
 }
 function shortAmt(minor, disp, rate) {
-  if (S.hide) return '•••';
+  if (S.hide) return '***';
   let v = minor / 100; if (disp === 'USD') v = v / rate;
   const a = Math.abs(v); const s = a >= 1e9 ? (a / 1e9).toFixed(1) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(a / 1e3) + 'k' : String(Math.round(a));
   return (disp === 'USD' ? '$' : '') + s.replace('.0', '');
@@ -453,7 +454,7 @@ function pgRate() {
   <div class="lbl" style="margin-top:12px">Which rate to use</div><div class="seg" style="margin:6px 0 12px;width:max-content"><button class="${kind === 'buy' ? 'on' : ''}" data-act="ratekind" data-id="buy">Bank buys</button><button class="${kind === 'sell' ? 'on' : ''}" data-act="ratekind" data-id="sell">Bank sells</button></div>
   <div class="sub">Buy is lower (the bank buys dollars from you). Sell is what you pay to buy dollars.</div>
   <div class="lbl" style="margin-top:14px">Manual rate (UZS per $1)</div><input class="f" id="ratem" inputmode="decimal" value="${esc(setting('rate_manual', ''))}" placeholder="e.g. 12700"></div>
-  <div class="card"><div class="lbl">Now on the website</div><div style="margin-top:6px">Buy: <b>${r.buy ? Math.round(r.buy) : '—'}</b> · Sell: <b>${r.sell ? Math.round(r.sell) : '—'}</b> · CBU: <b>${r.cbu ? Math.round(r.cbu) : '—'}</b></div><div class="sub">Source: ${r.source === 'ipakyuli' ? 'Ipak Yuli' : r.source === 'cbu' ? 'cbu.uz (fallback)' : '—'}${r.fetched_at ? ' · ' + dd(r.fetched_at) + ' ' + hm(r.fetched_at) : ''}</div><div style="margin-top:10px">In use: <b>${Math.round(curRate())}</b></div><button class="btn sec" style="margin-top:12px" data-act="raterefresh">Refresh</button></div>`;
+  <div class="card"><div class="lbl">Now on the website</div><div style="margin-top:6px">Buy: <b>${r.buy ? fmtRate(r.buy) : '—'}</b> · Sell: <b>${r.sell ? fmtRate(r.sell) : '—'}</b> · CBU: <b>${r.cbu ? fmtRate(r.cbu) : '—'}</b></div><div class="sub">Source: ${r.source === 'ipakyuli' ? 'Ipak Yuli' : r.source === 'cbu' ? 'cbu.uz (fallback)' : '—'}${r.fetched_at ? ' · ' + dd(r.fetched_at) + ' ' + hm(r.fetched_at) : ''}</div><div style="margin-top:10px">In use: <b>${fmtRate(curRate())}</b></div><button class="btn sec" style="margin-top:12px" data-act="raterefresh">Refresh</button></div>`;
 }
 const TG_WHY = { no_token: '', tg_unreachable: ' · Telegram not reachable', no_webhook: ' · webhook not connected', error: ' · last delivery failed', check_failed: ' · status check failed', not_linked: '' };
 const tgBadge = () => S.tgst ? (S.tgst.ok ? `<i class="okc">${svg('ok', 20)}</i>` : `<i class="badc">${svg('bad', 20)}</i>`) : '<i class="wait">…</i>';
@@ -508,7 +509,7 @@ function drawTx() {
       : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div><select class="f" data-f="category"><option value="">No category</option>${catOpts}</select>`}
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
-  ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${Math.round(curRate())} (from settings)</div>` : ''}
+  ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${fmtRate(curRate())} (from settings)</div>` : ''}
   <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full" data-act="txsave">Save</button></div>`);
   const am = document.getElementById('f-amount'); if (am && !F.id && !F.amount) setTimeout(() => am.focus(), 320);
 }
