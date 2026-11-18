@@ -289,6 +289,20 @@ async function ingest(env, ev) {
   const m = (ev.merchant || '').toUpperCase();
   const sms = ev.src === 'sms';
   const stmts = []; let txId = rid(); let notice;
+  // перевод между своими картами (Humo ···7052 <-> Ipak Yuli ···3153): одна пара операций, СМС с двух сторон склеиваются
+  if (sms && ((ev.type === 'expense' && /IPAK YULI M ULUGBEK|HUMO2UZCARD/.test(m) && acc.card_last4 === '7052') || (ev.type === 'income' && /HUMO2UZCARD/.test(m) && acc.card_last4 === '3153'))) {
+    const { results: all } = await env.DB.prepare('SELECT * FROM accounts WHERE space_id=? AND deleted_at IS NULL').bind(space).all();
+    const humo = all.find(a => a.card_last4 === '7052'), ipak = all.find(a => a.card_last4 === '3153');
+    if (humo && ipak) {
+      const ex = await env.DB.prepare("SELECT id FROM transactions WHERE type='transfer' AND account_id=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(humo.id, -ev.amount, ts - 15 * 60000, ts + 15 * 60000).first();
+      if (ex) { await touch(env); return { dup: true, text: 'merged' }; }
+      const g = rid(); const mine = acc.id === humo.id;
+      stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: 'transfer', account_id: humo.id, amount: -ev.amount, currency: 'UZS', fx_rate: 1, amount_base: -ev.amount, note: 'Humo → Ipak Yuli card', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: mine ? ev.src : 'sms_leg', external_id: mine ? (ev.ext || null) : null }));
+      stmts.push(insertRow(env, 'transactions', { id: rid(), space_id: space, type: 'transfer', account_id: ipak.id, amount: ev.amount, currency: 'UZS', fx_rate: 1, amount_base: ev.amount, note: 'Humo → Ipak Yuli card', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: mine ? 'sms_leg' : ev.src, external_id: mine ? null : (ev.ext || null) }));
+      await env.DB.batch(stmts); await touch(env);
+      return { text: `🔁 Transfer: ${fmtMoney(ev.amount, 'UZS')} ${humo.name} → ${ipak.name}` + await qoldiq(env, space, acc, ev), txId, noCat: true };
+    }
+  }
   if (sms && /IYB MOBILE EXCHANGE|IPAK YULI BANK KONV/.test(m) && ev.type === 'expense' && acc.currency === 'UZS') {
     // обмен сум -> USD на Visa: перевод между счетами
     const visa = (await env.DB.prepare("SELECT * FROM accounts WHERE space_id=? AND type='card_visa' AND deleted_at IS NULL LIMIT 1").bind(space).first());
