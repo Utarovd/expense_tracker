@@ -463,6 +463,12 @@ async function tgHandle(env, update) {
   if (res.dup) return;
   return notify(env, res);
 }
+async function sameMerchantUncategorized(env, tx) {
+  if (!tx.merchant) return [];
+  const { results } = await env.DB.prepare("SELECT id, merchant FROM transactions WHERE space_id=? AND type=? AND category_id IS NULL AND deleted_at IS NULL AND id<>?").bind(tx.space_id, tx.type, tx.id).all();
+  const key = norm(tx.merchant);
+  return results.filter(r => norm(r.merchant) === key);
+}
 async function tgCallback(env, cq) {
   const [act, txId, id] = (cq.data || '').split(':');
   const chat = cq.message.chat.id; const mid = cq.message.message_id;
@@ -474,6 +480,14 @@ async function tgCallback(env, cq) {
     const kb = await catKeyboard(env, tx.space_id, kind, txId, act === 'p' ? id : null);
     return tg(env, 'editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: kb });
   }
+  if (act === 'n') return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '') + '\n— left as is' });
+  if (act === 'y') {
+    const others = await sameMerchantUncategorized(env, tx);
+    const t = now();
+    for (const o of others) await env.DB.prepare('UPDATE transactions SET category_id=?, updated_at=?, synced_at=? WHERE id=? AND category_id IS NULL').bind(id, t, t, o.id).run();
+    if (others.length) await touch(env);
+    return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: `✓ Category set for ${others.length} other from ${tx.merchant}` });
+  }
   if (act === 'c') {
     const c = await env.DB.prepare('SELECT c.name, p.name AS pn FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE c.id=?').bind(id).first();
     if (!c) return;
@@ -482,7 +496,10 @@ async function tgCallback(env, cq) {
     if (tx.merchant) await env.DB.prepare('INSERT INTO merchant_map(merchant,category_id,updated_at) VALUES(?,?,?) ON CONFLICT(merchant) DO UPDATE SET category_id=excluded.category_id, updated_at=excluded.updated_at').bind(norm(tx.merchant), id, t).run();
     await touch(env);
     const base = (cq.message.text || '').replace(/\n\n(Куда отнести|Which category)\?$/, '').replace(/\n📂 .*/, '');
-    return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: base + `\n📂 ${(c.pn ? c.pn + ' › ' : '') + c.name} ✓`, reply_markup: { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + txId + ':' + (tx.type === 'income' ? 'income' : 'expense') }]] } });
+    const done = await tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: base + `\n📂 ${(c.pn ? c.pn + ' › ' : '') + c.name} ✓`, reply_markup: { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + txId + ':' + (tx.type === 'income' ? 'income' : 'expense') }]] } });
+    const others = await sameMerchantUncategorized(env, tx);
+    if (others.length) await tgSend(env, chat, `Also set ${(c.pn ? c.pn + ' › ' : '') + c.name} for ${others.length} other uncategorized from ${tx.merchant}?`, { reply_markup: { inline_keyboard: [[{ text: `Yes (${others.length})`, callback_data: 'y:' + txId + ':' + id }, { text: 'No', callback_data: 'n:' + txId + ':x' }]] } });
+    return done;
   }
 }
 async function budgetText(env, space) {
