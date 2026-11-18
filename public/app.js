@@ -243,6 +243,7 @@ function render(soft) {
   if (keep) return; // не перерисовываем поверх вводимого текста
   $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
+  animateBalance();
   if (soft) window.scrollTo(0, scroll);
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
@@ -265,6 +266,34 @@ function txRow(t) {
 
 // ---------- страницы ----------
 const uncatList = () => rows('transactions').filter(t => t.space_id === S.space && (t.type === 'expense' || t.type === 'income') && !t.category_id);
+
+// ---------- Home: лимиты, пустые состояния, анимация баланса ----------
+function limitsCard(m, sp) {
+  const rs = cats('expense').filter(c => !c.parent_id && !c.archived).map(c => { const b = budgetFor(c.id, m); return b && b.limit_amount > 0 ? { c, b, v: sp.out[c.id] || 0 } : null; }).filter(Boolean)
+    .map(x => ({ ...x, p: Math.round(x.v / x.b.limit_amount * 100) })).sort((a, b) => b.p - a.p).slice(0, 3);
+  if (!rs.length) return '';
+  return `<div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Category limits</div>${rs.map(x => `<div class="lim"><div class="limh"><div class="ico sm">${rootIcon(x.c, 18)}</div><b class="grow">${esc(x.c.name)}</b><span class="sub">${fmt(x.v, 'UZS')} / ${fmt(x.b.limit_amount, 'UZS')} UZS</span></div><div class="bar"><i class="${x.p >= 90 ? 'gr-red' : x.p >= 50 ? 'gr-ylw' : 'gr-grn'}" style="width:${Math.min(100, x.p)}%"></i></div><div class="sub limp">${x.p}%${x.p >= 100 ? ' · over the limit' : x.p >= 90 ? ' · almost at the limit' : ''}</div></div>`).join('')}</div>`;
+}
+const emptyState = () => `<div class="empty"><svg width="112" height="90" viewBox="0 0 120 96" fill="none" aria-hidden="true"><ellipse cx="60" cy="88" rx="38" ry="5" fill="var(--line)"/><rect x="22" y="24" width="76" height="52" rx="12" fill="#1b2f5e"/><path d="M22 38c0-7 5-12 12-12h52c7 0 12 5 12 12" stroke="#5b7bc4" stroke-width="3" stroke-linecap="round"/><rect x="70" y="46" width="30" height="18" rx="7" fill="#f5c518"/><circle cx="79" cy="55" r="3.2" fill="#1b2f5e"/><path d="M95 8l2.5 6 6 2.5-6 2.5-2.5 6-2.5-6-6-2.5 6-2.5z" fill="#f5c518"/><path d="M27 6l1.5 3.5L32 11l-3.5 1.5L27 16l-1.5-3.5L22 11l3.5-1.5z" fill="#f5c518" opacity=".7"/></svg><b>Your expenses will appear here</b><span class="sub">Add one with the yellow + or send it to the bot</span></div>`;
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dayLabel(ts) {
+  const day = (x) => Math.floor((x + TZ) / 86400000); const d = day(ts), t = day(now());
+  if (d === t) return 'Today'; if (d === t - 1) return 'Yesterday';
+  const x = new Date(ts + TZ); return `${MS[x.getUTCMonth()]} ${x.getUTCDate()} (${WD[x.getUTCDay()]})`;
+}
+function dayNet(list) {
+  const n = list.reduce((s, t) => s + (t.type === 'income' ? t.amount_base : t.type === 'expense' ? -t.amount_base : 0), 0);
+  return n === 0 ? '<span class="sub">0</span>' : `<span class="${n > 0 ? 'pos' : 'neg'}">${n > 0 ? '+' : '−'}${fmt(Math.abs(n), 'UZS')}</span>`;
+}
+let balAnim;
+function animateBalance() {
+  const el = document.getElementById('bal'); if (!el) { S.balShown = null; return; }
+  const to = +el.dataset.v; const from = S.balShown ?? to; S.balShown = to;
+  if (from === to) return; cancelAnimationFrame(balAnim);
+  const t0 = performance.now(), dur = 600;
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); const v = Math.round((from + (to - from) * e) / 100) * 100; const n = document.getElementById('bal'); if (!n) return; n.textContent = fmt(v, 'UZS') + ' UZS'; if (k < 1) balAnim = requestAnimationFrame(step); };
+  balAnim = requestAnimationFrame(step);
+}
 function pgHome() {
   const m = monthKey(now()); const bud = budgetFor(null, m); const sp = spentByRoot(m);
   const accs = accounts().filter(a => !a.hidden); const tot = totalBase(); const rate = curRate();
@@ -273,23 +302,24 @@ function pgHome() {
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
-  <div class="card hero"><div class="lbl">Balance</div><div class="big">${fmt(tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  <div class="card hero"><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
-  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
+  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')} UZS</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
+  ${limitsCard(m, sp)}
   <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
-  <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || '<div class="sub" style="padding:10px 0">Nothing yet</div>'}</div>`;
+  <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || emptyState()}</div>`;
 }
 function pgTrans() {
   const [a, b] = monthRange(curMonth()); const q = S.q.toLowerCase();
   const list = rows('transactions').filter(t => t.space_id === S.space && (S.uncat ? (t.type !== 'transfer' && !t.category_id) : (t.occurred_at >= a && t.occurred_at < b)) && (!S.accF || t.account_id === S.accF) &&
     (!q || (t.note + ' ' + t.merchant + ' ' + catPath(t.category_id)).toLowerCase().includes(q))).sort((x, y) => y.occurred_at - x.occurred_at);
-  const days = {}; list.forEach(t => { const k = dd(t.occurred_at); (days[k] = days[k] || []).push(t); });
+  const days = {}; list.forEach(t => { const k = dayLabel(t.occurred_at); (days[k] = days[k] || []).push(t); });
   const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount_base, 0);
   return `<div class="top"><h1>Transactions</h1>${spaceSwitch()}</div>${mnav()}
   <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
   <input id="srch" class="f" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
   <div class="chips"><button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
-  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span><span>${fmt(days[k].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), 'UZS')}</span></div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || '<div class="sub" style="text-align:center;padding:30px">No transactions</div>'}`;
+  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || `<div class="card">${emptyState()}</div>`}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
@@ -488,7 +518,7 @@ document.addEventListener('click', async (e) => {
     case 'add': openTx(null); break;
     case 'slice': selSlice(id); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
-    case 'space': S.space = id; persist(); render(); break;
+    case 'space': S.space = id; S.balShown = null; persist(); render(); break;
     case 'mprev': S.month = shiftMonth(curMonth(), -1); render(); break;
     case 'mnext': S.month = shiftMonth(curMonth(), 1); render(); break;
     case 'accf': S.accF = id; render(); break;
