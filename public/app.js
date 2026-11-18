@@ -812,3 +812,25 @@ boot();
   document.addEventListener('touchcancel', off, { passive: true });
   window.addEventListener('scroll', off, { passive: true });
 })();
+// кнопка «×» очистки поля: видна, пока поле в фокусе и в нём есть текст
+(() => {
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'clrx'; btn.setAttribute('aria-label', 'Clear'); btn.tabIndex = -1;
+  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+  let cur = null;
+  const ok = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && el.offsetParent;
+  const place = () => {
+    if (!cur || !cur.isConnected || document.activeElement !== cur || !cur.value) { btn.classList.remove('on'); if (cur) cur.classList.remove('hasclr'); return; }
+    if (btn.previousElementSibling !== cur) cur.after(btn);
+    cur.classList.add('hasclr');
+    btn.style.left = '0px'; btn.style.top = '0px'; const o = btn.getBoundingClientRect(), r = cur.getBoundingClientRect();
+    btn.style.left = (r.right - 34 - o.left) + 'px'; btn.style.top = (r.top + (r.height - 28) / 2 - o.top) + 'px';
+    btn.classList.add('on');
+  };
+  const clear = (e) => { e.preventDefault(); e.stopPropagation(); if (!cur) return; const el = cur; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); const n = el.isConnected ? el : document.activeElement; if (n && n.focus) n.focus({ preventScroll: true }); haptic && haptic(); requestAnimationFrame(place); };
+  btn.addEventListener('touchstart', clear, { passive: false }); btn.addEventListener('mousedown', clear);
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+  document.addEventListener('focusin', (e) => { if (cur && cur !== e.target) cur.classList.remove('hasclr'); cur = ok(e.target) ? e.target : null; place(); });
+  document.addEventListener('focusout', () => setTimeout(place, 0));
+  document.addEventListener('input', () => requestAnimationFrame(place));
+  window.addEventListener('resize', () => requestAnimationFrame(place));
+})();
