@@ -194,7 +194,7 @@ function render(soft) {
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
 function nav(on) {
-  const it = [['/', '🏠', 'Главная'], ['/transactions', '☰', 'Операции'], ['/stats', '📊', 'Статистика'], ['/accounts', '💳', 'Счета'], ['/more', '⋯', 'Ещё']];
+  const it = [['/', '🏠', 'Главная'], ['/transactions', '☰', 'Операции'], ['/stats', '📊', 'Статистика'], ['/accounts', '💳', 'Счета'], ['/more', '👤', 'Профиль']];
   return `<div class="nav"><div>${it.map(([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${i}</span>${n}</a>`).join('')}</div></div>`;
 }
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
@@ -262,7 +262,7 @@ function pgAccounts() {
 }
 function pgMore() {
   const l = [['/budget', '🎯', 'Бюджет и лимиты'], ['/categories', '🗂', 'Категории'], ['/rate', '💱', 'Курс доллара'], ['/settings', '⚙️', 'Настройки, Telegram']];
-  return `<div class="top"><h1>Ещё</h1>${spaceSwitch()}</div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${i}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
+  return `<div class="top"><h1>Профиль</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${i}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
   const m = curMonth(); const sp = spentByRoot(m); const tot = budgetFor(null, m);
