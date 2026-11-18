@@ -172,8 +172,10 @@ function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; el.classL
 const sheetEl = () => ovEl && ovEl.firstChild;
 
 // ---------- роутинг ----------
-function go(path, replace) { if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
-window.addEventListener('popstate', () => { closeSheet(); S.route = location.pathname; render(); });
+const MAIN = ['/', '/transactions', '/stats', '/accounts', '/more'];
+let slideDir = '';
+function go(path, replace) { const a = MAIN.indexOf(S.route), b = MAIN.indexOf(path); slideDir = a > -1 && b > -1 ? (b > a ? 'pg-next' : 'pg-prev') : ''; if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
+window.addEventListener('popstate', () => { slideDir = ''; closeSheet(); S.route = location.pathname; render(); });
 let lastRoute = null;
 function render(soft) {
   if (!S.user) { if (S.route !== '/login') { S.route = '/login'; history.replaceState({}, '', '/login'); } return renderLogin(); }
@@ -186,7 +188,7 @@ function render(soft) {
   const focus = document.activeElement && document.activeElement.id;
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
   if (keep) return; // не перерисовываем поверх вводимого текста
-  $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg' : ''}">${fn()}</div>` + nav(main) + (['/', '/transactions'].includes(r) ? '<button class="fab" data-act="add">+</button>' : '');
+  $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) + (['/', '/transactions'].includes(r) ? '<button class="fab" data-act="add">+</button>' : '');
   lastRoute = r;
   if (soft) window.scrollTo(0, scroll);
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
@@ -484,3 +486,19 @@ async function boot(fresh) {
 }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => 0);
 boot();
+
+// свайпы между разделами
+(() => {
+  let x0 = 0, y0 = 0, t0 = 0, ok = false;
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+    ok = e.touches.length === 1 && !ovEl && S.user && MAIN.includes(S.route) && !e.target.closest('input,select,textarea,.chips,.ov');
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!ok) return; ok = false;
+    const t = e.changedTouches[0]; const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - t0 > 700) return;
+    const i = MAIN.indexOf(S.route), j = i + (dx < 0 ? 1 : -1);
+    if (j >= 0 && j < MAIN.length) go(MAIN[j]);
+  }, { passive: true });
+})();
