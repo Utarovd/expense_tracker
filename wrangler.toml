@@ -17,4 +17,4 @@ mode = "smart"
 [[d1_databases]]
 binding = "DB"
 database_name = "expense-tracker"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "f979d1b1-1d4d-4fb5-9100-377b0d28d218"
