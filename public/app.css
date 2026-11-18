@@ -168,3 +168,19 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .addsub{display:flex;align-items:center;gap:8px;width:calc(100% - 56px);margin:10px 0 2px 56px;padding:11px 14px;border:1.5px dashed var(--pri);border-radius:14px;background:var(--pri2);color:var(--pri);font-weight:600;font-size:15px;cursor:pointer;transition:transform .12s ease,background .2s ease}
 .addsub:active{transform:scale(.97)}
 .addsub .i{stroke-width:2.4}
+
+.card.hero{position:relative}
+.eyeb{position:absolute;top:12px;right:12px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s ease,transform .12s ease}
+.eyeb:active{transform:scale(.92);background:rgba(255,255,255,.22)}
+.seg.per{margin-bottom:10px}
+.seg.per button{flex:1}
+.trend{display:block;margin-top:8px;overflow:visible}
+.trend rect{transition:height .35s ease,y .35s ease}
+.trend .tv{font-size:10px;font-weight:600;fill:var(--mut)}
+.trend .tm{font-size:11px;fill:var(--mut)}
+.trend .tm.on{fill:var(--tx);font-weight:700}
+.tleg{display:flex;gap:16px;justify-content:center;font-size:12px;color:var(--mut);margin-top:6px}
+.trend .bx{fill:var(--pri);opacity:.3}
+.trend .bx.on{opacity:1}
+:root[data-theme=dark] .trend .bx{fill:var(--ylw)}
+.trend .tv.on{fill:var(--tx)}

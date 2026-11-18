@@ -3,12 +3,12 @@
 const TABLES = ['spaces', 'accounts', 'categories', 'transactions', 'budgets', 'settings'];
 const TZ = 5 * 3600000;
 const $app = document.getElementById('app');
-const S = { user: null, db: {}, queue: {}, cursor: 0, space: null, route: '/', month: null, rates: null, me: null, online: navigator.onLine, syncing: false, lastSync: 0, q: '', accF: '', uncat: false, pending: 0 };
+const tryLS = (f) => { try { return f(); } catch (e) { return null; } };
+const S = { user: null, db: {}, queue: {}, cursor: 0, space: null, route: '/', month: null, rates: null, me: null, online: navigator.onLine, syncing: false, lastSync: 0, q: '', accF: '', uncat: false, pending: 0, per: '1M', hide: tryLS(() => localStorage.getItem('hideAmt')) === '1' };
 TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const rid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 14);
 const now = () => Date.now();
-const tryLS = (f) => { try { return f(); } catch (e) { return null; } };
 
 // ---------- хранилище ----------
 const idb = {
@@ -93,6 +93,7 @@ function curRate() {
   return r[k] || r.cbu || man || 12700;
 }
 function fmt(minor, cur) {
+  if (S.hide) return '•••••';
   const v = minor / 100;
   if (cur === 'USD') return (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (v < 0 ? '−' : '') + Math.abs(Math.round(v)).toLocaleString('ru-RU').replace(/ /g, ' ');
@@ -131,6 +132,8 @@ const IC = {
   plus: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v8M8 12h8',
   add: 'M12 5v14M5 12h14',
   grip: 'M5 8h14M5 12h14M5 16h14',
+  eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  eyeoff: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 4l16 16',
   tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
   ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
@@ -140,8 +143,8 @@ const CATIC = { food: 'food', leisure: 'game', transport: 'car', expenses: 'rece
 const rootIcon = (r, sz) => !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
 const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
 const catIcon = (id) => rootIcon(rootOf(id));
-function spentByRoot(m, space = S.space) {
-  const [a, b] = monthRange(m); const out = {}; let total = 0;
+function spentByRoot(m, space = S.space, rng) {
+  const [a, b] = rng || monthRange(m); const out = {}; let total = 0;
   for (const t of rows('transactions')) {
     if (t.space_id !== space || t.type !== 'expense' || t.occurred_at < a || t.occurred_at >= b) continue;
     const r = rootOf(t.category_id); const k = r ? r.id : '_none';
@@ -290,7 +293,7 @@ let balAnim;
 function animateBalance() {
   const el = document.getElementById('bal'); if (!el) { S.balShown = null; return; }
   const to = +el.dataset.v; const from = S.balShown ?? to; S.balShown = to;
-  if (from === to) return; cancelAnimationFrame(balAnim);
+  if (from === to || S.hide) return; cancelAnimationFrame(balAnim);
   const t0 = performance.now(), dur = 600;
   const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); const v = Math.round((from + (to - from) * e) / 100) * 100; const n = document.getElementById('bal'); if (!n) return; n.textContent = fmt(v, 'UZS') + ' UZS'; if (k < 1) balAnim = requestAnimationFrame(step); };
   balAnim = requestAnimationFrame(step);
@@ -303,7 +306,7 @@ function pgHome() {
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
-  <div class="card hero"><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  <div class="card hero"><button class="eyeb" data-act="hide" aria-label="${S.hide ? 'Show amounts' : 'Hide amounts'}">${svg(S.hide ? 'eye' : 'eyeoff', 22)}</button><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')} UZS</div><div class="sub">≈ $${S.hide ? '•••••' : (tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
   <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')} UZS</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   ${limitsCard(m, sp)}
@@ -333,11 +336,39 @@ function selSlice(id) {
   document.querySelectorAll('.legend').forEach(l => l.classList.toggle('on', l.dataset.id === nx));
   haptic();
 }
+const PERN = { '1M': 1, '3M': 3, '1Y': 12 };
+function perRange(m, per) {
+  if (per === 'All') return [-Infinity, Infinity];
+  const n = PERN[per] || 1; return [monthRange(shiftMonth(m, 1 - n))[0], monthRange(m)[1]];
+}
+const MSH = (m) => MN[+m.split('-')[1] - 1].slice(0, 3);
+function perLabel(m, per) {
+  if (per === '1M') return monthName(m);
+  const f = shiftMonth(m, 1 - PERN[per]); return `${MSH(f)} ${f.split('-')[0] !== m.split('-')[0] ? f.split('-')[0] + ' ' : ''}– ${MSH(m)} ${m.split('-')[0]}`;
+}
+function shortAmt(minor, disp, rate) {
+  if (S.hide) return '•••';
+  let v = minor / 100; if (disp === 'USD') v = v / rate;
+  const a = Math.abs(v); const s = a >= 1e9 ? (a / 1e9).toFixed(1) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(a / 1e3) + 'k' : String(Math.round(a));
+  return (disp === 'USD' ? '$' : '') + s.replace('.0', '');
+}
+function trendChart(m, disp, rate) {
+  const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(m, -i));
+  const vals = ms.map(x => { const [a, b] = monthRange(x); let e = 0, inc = 0; rows('transactions').forEach(t => { if (t.space_id === S.space && t.occurred_at >= a && t.occurred_at < b) { if (t.type === 'expense') e += t.amount_base; else if (t.type === 'income') inc += t.amount_base; } }); return { m: x, e, inc }; });
+  const mx = Math.max(1, ...vals.map(v => v.e)); const H = 100, top = 22;
+  const bars = vals.map((v, i) => { const he = v.e / mx * H; const cur = v.m === m;
+    return `<g data-act="trendm" data-id="${v.m}" style="cursor:pointer"><rect x="${i * 50}" y="0" width="50" height="${top + H + 24}" fill="transparent"/>
+    <rect class="bx${cur ? ' on' : ''}" x="${i * 50 + 11}" y="${top + H - he}" width="28" height="${he}" rx="5"/>
+    <text x="${i * 50 + 25}" y="${top + H - he - 6}" text-anchor="middle" class="tv${cur ? ' on' : ''}">${v.e ? shortAmt(v.e, disp, rate) : ''}</text>
+    <text x="${i * 50 + 25}" y="${top + H + 17}" text-anchor="middle" class="tm${cur ? ' on' : ''}">${MSH(v.m)}</text></g>`; }).join('');
+  const avg = vals.reduce((x, v) => x + v.e, 0) / 6;
+  return `<div class="card"><div class="lbl">Expenses · last 6 months</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%">${bars}</svg><div class="tleg">Average ${shortAmt(avg, disp, rate)} / month · tap a month to open it</div></div>`;
+}
 function pgStats() {
-  const m = curMonth(); const sp = spentByRoot(m); const disp = S.dispCur || 'UZS'; const rate = curRate();
+  const m = curMonth(); const per = S.per || '1M'; const rng = perRange(m, per); const sp = spentByRoot(m, S.space, rng); const disp = S.dispCur || 'UZS'; const rate = curRate();
   const conv = (v) => disp === 'USD' ? v / rate : v; const f = (v) => disp === 'USD' ? fmt(Math.round(conv(v)), 'USD') : fmt(v, 'UZS');
   const items = Object.entries(sp.out).map(([id, v]) => ({ id, v, c: byId('categories', id) })).sort((a, b) => b.v - a.v);
-  let acc = 0; const R = 70, C = 2 * Math.PI * R; const [a0, b0] = monthRange(m);
+  let acc = 0; const R = 70, C = 2 * Math.PI * R; const [a0, b0] = rng;
   const pct = (v) => Math.round(v / sp.total * 100);
   const donut = sp.total ? `<div class="donut"><svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const gap = items.length > 1 ? 1.5 : 0; const s = `<circle data-act="slice" data-id="${it.id}" class="sl" r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="34" stroke-dasharray="${Math.max(0.1, len - gap)} ${C - len + gap}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>
     <div class="dc" data-for=""><b>${f(sp.total)}</b><span>total</span></div>${items.map((it, i) => `<div class="dc" data-for="${it.id}"><b style="color:${colOf(it, i)}">${pct(it.v)}%</b><span>${it.c ? esc(it.c.name) : 'No category'}</span></div>`).join('')}</div>`
@@ -349,12 +380,16 @@ function pgStats() {
   rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
   const mx = Math.max(1, ...days); const bw = 300 / nd;
   const bars = `<svg viewBox="0 0 300 100" width="100%" height="110" preserveAspectRatio="none">${days.map((v, i) => `<rect x="${i * bw + 1}" y="${100 - v / mx * 96}" width="${bw - 2}" height="${v / mx * 96}" rx="2" fill="var(--pri)"/>`).join('')}</svg>`;
-  const bud = budgetFor(null, m);
-  return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>${mnav()}
+  const bud = per === '1M' ? budgetFor(null, m) : null;
+  const step = PERN[per] || 1; const ttl = { '1M': 'Spent this month', '3M': 'Spent in 3 months', '1Y': 'Spent in 12 months', All: 'Spent all time' }[per];
+  return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>
+  <div class="seg per">${['1M', '3M', '1Y', 'All'].map(c => `<button class="${per === c ? 'on' : ''}" data-act="per" data-id="${c}">${c}</button>`).join('')}</div>
+  ${per === 'All' ? '<div class="mnav"><b>All time</b></div>' : `<div class="mnav"><button data-act="mprev" data-id="${step}">‹</button><b>${perLabel(m, per)}</b><button data-act="mnext" data-id="${step}">›</button></div>`}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
-  <div class="card" style="text-align:center"><div class="lbl">Spent this month</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donut}</div>
+  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donut}</div>
   ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
-  <div class="card"><div class="lbl">By day</div>${bars}</div>`;
+  ${trendChart(m, disp, rate)}
+  ${per === '1M' ? `<div class="card"><div class="lbl">By day</div>${bars}</div>` : ''}`;
 }
 function pgAccounts() {
   const accs = accounts();
@@ -558,8 +593,11 @@ document.addEventListener('click', async (e) => {
     case 'slice': selSlice(id); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
     case 'space': S.space = id; S.balShown = null; persist(); render(); break;
-    case 'mprev': S.month = shiftMonth(curMonth(), -1); render(); break;
-    case 'mnext': S.month = shiftMonth(curMonth(), 1); render(); break;
+    case 'mprev': S.month = shiftMonth(curMonth(), -(+id || 1)); render(); break;
+    case 'mnext': S.month = shiftMonth(curMonth(), +id || 1); render(); break;
+    case 'per': S.per = id; haptic(); render(); break;
+    case 'trendm': S.month = id; S.per = '1M'; haptic(); render(); break;
+    case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic(); render(); break;
     case 'accf': S.accF = id; render(); break;
     case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/transactions'); break;
     case 'uncatf': S.uncat = !S.uncat; render(); break;
