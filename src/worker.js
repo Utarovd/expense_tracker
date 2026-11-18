@@ -256,8 +256,7 @@ function parseSms(text) {
   const k = kind.toLowerCase();
   let type = null;
   let kindX;
-  if (/chiqim/.test(k)) { type = 'expense'; kindX = 'cashout'; }
-  else if (/to'?lov|xarid|yechish|payment|purchase/.test(k)) type = 'expense';
+  if (/chiqim|to'?lov|xarid|yechish|payment|purchase/.test(k)) type = 'expense';
   else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish/.test(k)) type = 'income';
   if (!type) return null;
   const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
