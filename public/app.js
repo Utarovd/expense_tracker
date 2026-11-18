@@ -226,11 +226,14 @@ function toast(msg, onTap) {
   clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), onTap ? 5000 : 2600);
 }
 let ovEl = null;
+let lockY = null;
+function lockScroll() { if (lockY !== null) return; lockY = window.scrollY || 0; const b = document.body; b.style.position = 'fixed'; b.style.top = -lockY + 'px'; b.style.left = '0'; b.style.right = '0'; b.style.width = '100%'; }
+function unlockScroll() { if (lockY === null) return; const y = lockY; lockY = null; const b = document.body; b.style.position = b.style.top = b.style.left = b.style.right = b.style.width = ''; window.scrollTo({ top: y, behavior: 'instant' }); }
 function openSheet(html) {
-  if (!ovEl) { ovEl = document.createElement('div'); ovEl.className = 'ov'; ovEl.innerHTML = '<div class="sheet"></div>'; ovEl.addEventListener('mousedown', e => { if (e.target === ovEl) closeSheet(); }); document.body.appendChild(ovEl); requestAnimationFrame(() => requestAnimationFrame(() => ovEl && ovEl.classList.add('open'))); }
-  ovEl.firstChild.innerHTML = html;
+  if (!ovEl) { lockScroll(); ovEl = document.createElement('div'); ovEl.className = 'ov'; ovEl.innerHTML = '<div class="sheet"></div>'; ovEl.addEventListener('mousedown', e => { if (e.target === ovEl) closeSheet(); }); document.body.appendChild(ovEl); requestAnimationFrame(() => requestAnimationFrame(() => ovEl && ovEl.classList.add('open'))); }
+  ovEl.firstChild.innerHTML = '<i class="grab"></i><button type="button" class="shx" aria-label="Close" data-act="shclose">×</button>' + html;
 }
-function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; el.classList.remove('open'); setTimeout(() => el.remove(), 300); }
+function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; unlockScroll(); el.classList.remove('open'); setTimeout(() => el.remove(), 300); }
 const sheetEl = () => ovEl && ovEl.firstChild;
 // подтверждение (как alert в iOS): Promise<boolean>
 function ask(title, msg, okLabel = 'Delete') {
@@ -741,6 +744,7 @@ document.addEventListener('click', async (e) => {
         S.route = '/'; history.replaceState({}, '', '/'); await boot(true);
       } catch (e) { if (er) er.textContent = 'Face ID didn’t work. Use the password.'; }
       break; }
+    case 'shclose': closeSheet(); break;
     case 'bt': openBt(); break;
     case 'btsave': {
       const sh = sheetEl(); const t = num(sh.querySelector('#bt_total').value);
@@ -980,7 +984,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   const TY = ['expense', 'income', 'transfer'];
   const EASE = '.3s cubic-bezier(.2,.8,.2,1)';
   let st = null;
-  const parts = (root) => [...(root || sheetEl()).children].filter(e => e.tagName !== 'H2' && !e.classList.contains('seg') && !e.classList.contains('txnb') && !e.classList.contains('clrx'));
+  const parts = (root) => [...(root || sheetEl()).children].filter(e => e.tagName !== 'H2' && !e.classList.contains('seg') && !e.classList.contains('txnb') && !e.classList.contains('clrx') && !e.classList.contains('grab') && !e.classList.contains('shx'));
   const W = () => (sheetEl() ? sheetEl().clientWidth : 360) + 16;
   const typeF = (ty) => { const g = { ...F, type: ty }; if (ty === 'transfer' && F.type !== 'transfer') { if (F.account) g.from = F.account; if (g.to === g.from) g.to = ''; } else if (F.type === 'transfer' && ty !== 'transfer' && F.from) g.account = F.from; if (ty !== 'transfer') g.category = ''; return g; };
   function preview(ty) { // содержимое соседнего типа, чтобы оно въезжало рядом
@@ -1076,3 +1080,32 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   window.addEventListener('click', (e) => { if (justDragged && e.target.closest('.nav')) { e.preventDefault(); e.stopPropagation(); justDragged = false; } }, true);
 })();
 document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target.closest('.nav')) e.preventDefault(); });
+
+// шторки: свайп вниз закрывает (окно едет за пальцем), Esc, крестик, тап по фону
+(() => {
+  let st = null;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ovEl && !document.querySelector('.cf')) closeSheet(); });
+  document.addEventListener('touchstart', (e) => {
+    const sh = sheetEl(); if (!sh || !sh.contains(e.target) || e.touches.length !== 1) { st = null; return; }
+    const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, t0: Date.now(), on: false, dy: 0, top: sh.scrollTop <= 0 };
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!st || !ovEl) return; const sh = sheetEl(); const t = e.touches[0]; const dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (!st.on) {
+      if (!st.top && sh.scrollTop > 0) { st = null; return; }
+      if (dy > 8 && dy > Math.abs(dx) * 1.2 && sh.scrollTop <= 0) { st.on = true; st.y = t.clientY - 0; st.dy = 0; sh.style.transition = 'none'; }
+      else if (Math.abs(dx) > 10 || dy < -8) { st = null; return; }
+      else return;
+    }
+    const d = Math.max(0, t.clientY - st.y); st.dy = d; if (e.cancelable) e.preventDefault();
+    sh.style.transform = `translateY(${d}px)`; ovEl.style.opacity = String(Math.max(0.2, 1 - d / 500));
+  }, { passive: false });
+  const end = () => {
+    if (!st) return; const s2 = st; st = null; if (!s2.on || !ovEl) return;
+    const sh = sheetEl(), ov = ovEl; const v = s2.dy / Math.max(1, Date.now() - s2.t0);
+    sh.style.transition = ''; ov.style.opacity = '';
+    if (s2.dy > 110 || v > 0.6) { sh.style.transform = ''; closeSheet(); }
+    else sh.style.transform = '';
+  };
+  document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
+})();
