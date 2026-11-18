@@ -40,6 +40,44 @@ async function authed(req, env) {
   return s.user_id;
 }
 
+
+// ---------- passkey (Face ID) ----------
+const b64u = (buf) => b64(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (s) => unb64(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4));
+async function pkChallenge(env) {
+  const c = b64u(crypto.getRandomValues(new Uint8Array(32)));
+  await env.DB.prepare('INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)').bind('chal:' + c, String(now() + 5 * 60000)).run();
+  return c;
+}
+async function pkCheckClient(env, url, cdj, type) {
+  const cd = JSON.parse(new TextDecoder().decode(unb64u(cdj)));
+  if (cd.type !== type || cd.origin !== (env.PK_ORIGIN || url.origin)) return false;
+  const row = await env.DB.prepare('SELECT v FROM meta WHERE k=?').bind('chal:' + cd.challenge).first();
+  if (!row) return false;
+  await env.DB.prepare('DELETE FROM meta WHERE k=?').bind('chal:' + cd.challenge).run();
+  return +row.v > now();
+}
+function derToRaw(der) {
+  let i = 2; const out = new Uint8Array(64);
+  for (let k = 0; k < 2; k++) {
+    i++; let len = der[i++]; let r = der.slice(i, i + len); i += len;
+    while (r.length > 32 && r[0] === 0) r = r.slice(1);
+    out.set(r, k * 32 + 32 - r.length);
+  }
+  return out;
+}
+async function pkVerifySig(pubB64, authData, cdj, sig) {
+  const key = await crypto.subtle.importKey('spki', unb64u(pubB64), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', unb64u(cdj)));
+  const data = new Uint8Array(authData.length + 32); data.set(authData); data.set(h, authData.length);
+  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derToRaw(sig), data);
+}
+async function pkAuthDataOk(env, url, authData) {
+  const rp = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.PK_HOST || url.hostname)));
+  for (let i = 0; i < 32; i++) if (authData[i] !== rp[i]) return false;
+  return (authData[32] & 0x05) === 0x05; // user present + verified
+}
+
 // ---------- синхронизация ----------
 function upsertStmt(env, table, row, ts) {
   const cols = [...T[table], 'updated_at', 'deleted_at'];
@@ -591,6 +629,23 @@ export default {
         await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), u.id, now() + 12 * 3600000).run();
         return J({ ok: true }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
       }
+      if (path === '/api/pk/auth-options' && req.method === 'POST') {
+        const ks = (await env.DB.prepare('SELECT id FROM passkeys').all()).results;
+        if (!ks.length) return J({ none: true });
+        return J({ challenge: await pkChallenge(env), rpId: env.PK_HOST || url.hostname, allow: ks.map(k => k.id) });
+      }
+      if (path === '/api/pk/auth-finish' && req.method === 'POST') {
+        const b = await req.json();
+        const k = await env.DB.prepare('SELECT * FROM passkeys WHERE id=?').bind(String(b.id || '')).first();
+        try {
+          const ad = unb64u(b.authenticatorData);
+          if (!k || !(await pkCheckClient(env, url, b.clientDataJSON, 'webauthn.get')) || !(await pkAuthDataOk(env, url, ad)) || !(await pkVerifySig(k.pub, ad, b.clientDataJSON, unb64u(b.signature)))) return J({ error: 'bad_passkey' }, 400);
+        } catch (e) { return J({ error: 'bad_passkey' }, 400); }
+        const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
+        await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), k.user_id, now() + 12 * 3600000).run();
+        await env.DB.prepare('INSERT INTO login_log(login,ok,ip,at) VALUES(?,?,?,?)').bind('passkey', 1, req.headers.get('cf-connecting-ip') || '', now()).run();
+        return J({ ok: true }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
+      }
       const uid = await authed(req, env);
       if (!uid) return J({ error: 'auth' }, 401);
       if (path === '/api/logout') {
@@ -606,10 +661,27 @@ export default {
         await env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').bind(uid, await sha(cookie(req, 'sid'))).run();
         return J({ ok: true });
       }
+      if (path === '/api/pk/reg-options' && req.method === 'POST') {
+        const u = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(uid).first();
+        return J({ challenge: await pkChallenge(env), rp: { id: env.PK_HOST || url.hostname, name: 'Budget' }, user: { id: b64u(new TextEncoder().encode(uid)), name: u.login, displayName: u.login } });
+      }
+      if (path === '/api/pk/reg-finish' && req.method === 'POST') {
+        const b = await req.json();
+        try { if (!(await pkCheckClient(env, url, b.clientDataJSON, 'webauthn.create')) || !b.id || !b.publicKey) return J({ error: 'bad_passkey' }, 400);
+          await crypto.subtle.importKey('spki', unb64u(b.publicKey), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+        } catch (e) { return J({ error: 'bad_passkey' }, 400); }
+        await env.DB.prepare('INSERT OR REPLACE INTO passkeys(id,user_id,pub,created_at) VALUES(?,?,?,?)').bind(String(b.id), uid, String(b.publicKey), now()).run();
+        return J({ ok: true });
+      }
+      if (path === '/api/pk/remove' && req.method === 'POST') {
+        await env.DB.prepare('DELETE FROM passkeys WHERE user_id=?').bind(uid).run();
+        return J({ ok: true });
+      }
       if (path === '/api/me') {
         const u = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(uid).first();
         const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();
-        return J({ login: u.login, hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
+        const pk = await env.DB.prepare('SELECT COUNT(*) c FROM passkeys WHERE user_id=?').bind(uid).first();
+        return J({ login: u.login, pk: pk.c, hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
       }
       if (path === '/api/stamp') return J({ stamp: await getMeta(env, 'stamp') });
       if (path === '/api/sync' && req.method === 'POST') return J(await sync(env, await req.json()));

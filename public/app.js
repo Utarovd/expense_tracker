@@ -25,6 +25,8 @@ function put(t, row) { row.updated_at = now(); S.db[t][row.id] = row; S.queue[t]
 function del(t, id) { const r = S.db[t][id]; if (r) put(t, { ...r, deleted_at: now() }); }
 
 // ---------- сеть ----------
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (x) => Uint8Array.from(atob(x.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((x.length + 3) % 4)), c => c.charCodeAt(0));
 async function api(path, opt = {}, ms = 15000) {
   const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms);
   try {
@@ -453,7 +455,15 @@ function pgBudget() {
   const m = curMonth(); const sp = spentByRoot(m); const tot = budgetFor(null, m);
   const roots = cats('expense').filter(c => !c.parent_id && !c.archived);
   const line = (name, spent, b, cat) => { const lim = b ? b.limit_amount : 0; const pct = lim ? Math.min(100, Math.round(spent / lim * 100)) : 0; return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="grow">${name}</b><input class="f" style="width:130px;margin:0;text-align:right" inputmode="decimal" data-bud="${cat || ''}" placeholder="limit" value="${lim ? grp(Math.round(lim / 100)) : ''}"></div><div class="bar"><i class="${lim && spent > lim ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">spent ${fmt(spent, 'UZS')}${lim ? ' · left ' + fmt(lim - spent, 'UZS') : ''}</div></div>`; };
-  return `<div class="top"><h1>Budget</h1>${spaceSwitch()}</div>${mnav()}<div class="card"><div class="lbl">The limit applies to this and following months</div>${line('Whole month', sp.total, tot, '')}${roots.map(c => line(`<span class="lic">${rootIcon(c, 18)}</span>` + esc(c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
+  const pace = (() => {
+    if (!tot || !(tot.limit_amount > 0)) return '';
+    const [st, en] = monthRange(m); const span = en - st; const el = Math.min(1, Math.max(0, (now() - st) / span));
+    const dim = Math.round(span / 86400000); const dayN = Math.min(dim, Math.max(1, Math.ceil(el * dim)));
+    const planned = Math.round(tot.limit_amount * el); const left = tot.limit_amount - sp.total; const dl = Math.max(1, dim - dayN + 1);
+    const st2 = sp.total > tot.limit_amount ? ['over', 'Over the budget'] : sp.total > planned * 1.1 ? ['warn', 'Ahead of plan'] : ['ok', 'On track'];
+    return `<div class="card pace ${st2[0]}"><div class="lbl">Goal for ${monthName(m)}</div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px"><b class="big">${fmt(sp.total, 'UZS', 1)}</b><span class="sub">of ${fmt(tot.limit_amount, 'UZS')}</span></div><div class="bar"><i class="${sp.total > tot.limit_amount ? 'over' : ''}" style="width:${Math.min(100, Math.round(sp.total / tot.limit_amount * 100))}%"></i><u style="left:${Math.round(el * 100)}%"></u></div><div class="sub"><b class="pst">${st2[1]}</b> · plan for today ${fmt(planned, 'UZS')} · ${left >= 0 ? 'you can spend ' + fmt(Math.round(left / dl), 'UZS') + ' a day' : 'over by ' + fmt(-left, 'UZS')}</div></div>`;
+  })();
+  return `<div class="top"><h1>Budget</h1>${spaceSwitch()}</div>${mnav()}${pace}<button class="btn full" style="margin-bottom:12px" data-act="bt">Budget template</button><div class="card"><div class="lbl">The limit applies to this and following months</div>${line('Whole month', sp.total, tot, '')}${roots.map(c => line(`<span class="lic">${rootIcon(c, 18)}</span>` + esc(c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
 }
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
@@ -524,12 +534,13 @@ function pgSettings() {
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div>` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
+  ${window.PublicKeyCredential ? `<div class="card"><b>Face ID</b><div class="sub" style="margin:4px 0 10px">${me.pk ? 'Face ID sign-in is on. The password still works.' : 'Sign in with Face ID instead of typing the password. The password stays as a backup.'}</div><div class="err" id="pkerr"></div>${me.pk ? '<button class="btn sec" data-act="pkoff">Turn off Face ID</button>' : '<button class="btn" data-act="pkon">Turn on Face ID</button>'}</div>` : ''}
   <div class="card"><b>Password</b><div class="sub" style="margin:4px 0 10px">Other devices will be signed out, this one stays signed in.</div><input class="f" type="password" id="pw0" placeholder="Current password" autocomplete="current-password"><input class="f" type="password" id="pw1" placeholder="New password (8+ characters)" autocomplete="new-password"><input class="f" type="password" id="pw2" placeholder="Repeat new password" autocomplete="new-password"><div class="err" id="pwerr"></div><button class="btn" data-act="pwsave">Change password</button></div>
   <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
   <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
 }
 function renderLogin() {
-  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div><button class="btn full" data-act="login">Sign in</button></div>`;
+  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div>${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential ? '<button class="btn full" data-act="pklogin" style="margin-bottom:10px">Sign in with Face ID</button>' : ''}<button class="btn ${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential ? 'sec ' : ''}full" data-act="login">Sign in</button></div>`;
 }
 
 // ---------- окна ----------
@@ -645,6 +656,42 @@ document.addEventListener('click', async (e) => {
       if (!r) return er.textContent = 'No connection to the server';
       if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Too many attempts, wait 15 minutes' : 'Wrong login or password';
       S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); break; }
+    case 'pkon': {
+      const er = document.getElementById('pkerr');
+      try {
+        const o = await api('/api/pk/reg-options', { method: 'POST' }); if (!o.ok) throw 0;
+        const cr = await navigator.credentials.create({ publicKey: { challenge: unb64u(o.data.challenge), rp: o.data.rp, user: { id: unb64u(o.data.user.id), name: o.data.user.name, displayName: o.data.user.displayName }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' }, timeout: 60000 } });
+        const r = await api('/api/pk/reg-finish', { method: 'POST', body: JSON.stringify({ id: b64u(cr.rawId), clientDataJSON: b64u(cr.response.clientDataJSON), publicKey: b64u(cr.response.getPublicKey()) }) });
+        if (!r.ok) throw 0;
+        tryLS(() => localStorage.setItem('pk', '1')); S.me = { ...S.me, pk: 1 }; persist(); render(); toast('Face ID is on');
+      } catch (e) { if (er) er.textContent = 'Couldn’t turn on Face ID. Open the app at budget.in-manager.uz and try again.'; }
+      break; }
+    case 'pkoff': if (!(await ask('Turn off Face ID?', 'You will sign in with the password.', 'Turn off'))) break; await api('/api/pk/remove', { method: 'POST' }).catch(() => 0); tryLS(() => localStorage.removeItem('pk')); S.me = { ...S.me, pk: 0 }; persist(); render(); break;
+    case 'pklogin': {
+      const er = document.getElementById('lgerr');
+      try {
+        const o = await api('/api/pk/auth-options', { method: 'POST' }); if (!o.ok || o.data.none) throw 0;
+        const a = await navigator.credentials.get({ publicKey: { challenge: unb64u(o.data.challenge), rpId: o.data.rpId, allowCredentials: o.data.allow.map(id => ({ type: 'public-key', id: unb64u(id) })), userVerification: 'required', timeout: 60000 } });
+        const r = await api('/api/pk/auth-finish', { method: 'POST', body: JSON.stringify({ id: b64u(a.rawId), clientDataJSON: b64u(a.response.clientDataJSON), authenticatorData: b64u(a.response.authenticatorData), signature: b64u(a.response.signature) }) });
+        if (!r.ok) throw 0;
+        S.route = '/'; history.replaceState({}, '', '/'); await boot(true);
+      } catch (e) { if (er) er.textContent = 'Face ID didn’t work. Use the password.'; }
+      break; }
+    case 'bt': openBt(); break;
+    case 'btsave': {
+      const sh = sheetEl(); const t = num(sh.querySelector('#bt_total').value);
+      if (!(t > 0)) { sh.querySelector('#bterr').textContent = 'Enter the total first'; break; }
+      saveBudget(null, String(t));
+      sh.querySelectorAll('[data-bt]').forEach(i => saveBudget(i.dataset.bt, i.value));
+      closeSheet(); toast('Template saved'); break; }
+    case 'btfill': {
+      const sh = sheetEl(); const t = num(sh.querySelector('#bt_total').value); if (!(t > 0)) break;
+      const ins = [...sh.querySelectorAll('[data-bt]')]; const per = Math.floor(t / ins.length / 1000) * 1000;
+      ins.forEach((i, k) => i.value = grp(k === 0 ? t - per * (ins.length - 1) : per)); btCalc(); break; }
+    case 'btcur': {
+      const sh = sheetEl(); const m = curMonth();
+      const b = budgetFor(null, m); if (b) sh.querySelector('#bt_total').value = grp(Math.round(b.limit_amount / 100));
+      sh.querySelectorAll('[data-bt]').forEach(i => { const x = budgetFor(i.dataset.bt, m); i.value = x && x.limit_amount > 0 ? grp(Math.round(x.limit_amount / 100)) : ''; }); btCalc(); break; }
     case 'logout': if (!(await ask('Log out?', 'You’ll need to sign in again on this device.', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
     case 'add': openTx(null); break;
     case 'slice': selSlice(id); break;
@@ -700,6 +747,7 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target;
+  if (el.id === 'bt_total' || el.dataset.bt !== undefined) requestAnimationFrame(btCalc);
   // поля сумм: только цифры, пробелы и один разделитель
   if (el.inputMode === 'decimal' || el.inputMode === 'numeric') {
     let v = el.value, c = v;
@@ -718,6 +766,25 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => { const el = e.target; if (el.dataset.f && F.type === 'transfer' && ['from', 'to'].includes(el.dataset.f)) drawTx(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'qa' && e.target.value.trim()) { quickAdd(e.target.value); e.target.value = ''; } if (e.key === 'Enter' && e.target.id === 'pw') document.querySelector('[data-act=login]').click(); });
+function openBt() {
+  const m = curMonth(); const roots = cats('expense').filter(c => !c.parent_id && !c.archived); const tot = budgetFor(null, m);
+  const v = (b) => b && b.limit_amount > 0 ? grp(Math.round(b.limit_amount / 100)) : '';
+  openSheet(`<h2>Budget template · ${esc((rows('spaces').find(x => x.id === S.space) || {}).name || '')}</h2>
+  <div class="sub" style="margin-bottom:8px">Pick the total for the month, then split it between categories. Saved limits repeat every month until you change them.</div>
+  <div class="lbl">Total for the month, UZS</div><input class="f" id="bt_total" inputmode="decimal" placeholder="10 000 000" value="${v(tot)}">
+  <div class="btrows">${roots.map(c => `<div class="btr"><div class="ico sm">${rootIcon(c, 18)}</div><b class="grow">${esc(c.name)}</b><span class="btp sub"></span><input class="f" inputmode="decimal" data-bt="${c.id}" placeholder="0" value="${v(budgetFor(c.id, m))}"></div>`).join('')}</div>
+  <div class="btun" id="btun"></div><div class="err" id="bterr"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button class="btn sec" data-act="btfill">Split evenly</button><button class="btn sec" data-act="btcur">Current limits</button></div>
+  <button class="btn full" data-act="btsave">Save template</button>`);
+  btCalc();
+}
+function btCalc() {
+  const sh = sheetEl(); if (!sh) return; const t = num(sh.querySelector('#bt_total').value) || 0; let sum = 0;
+  sh.querySelectorAll('[data-bt]').forEach(i => { const a = num(i.value) || 0; sum += a; i.parentNode.querySelector('.btp').textContent = t > 0 && a > 0 ? Math.round(a / t * 100) + '%' : ''; });
+  const left = t - sum; const el = sh.querySelector('#btun');
+  el.className = 'btun' + (t > 0 && left < 0 ? ' neg' : t > 0 && left === 0 ? ' ok' : '');
+  el.textContent = t > 0 ? (left === 0 ? 'Everything is distributed' : left > 0 ? 'Not distributed: ' + fmt(Math.round(left * 100), 'UZS') : 'Over the total by ' + fmt(Math.round(-left * 100), 'UZS')) : 'Enter the total to see the balance';
+}
 function saveBudget(cat, val) {
   const m = curMonth(); const key = `${S.space}:${m}:${cat || 'all'}`; const v = num(val); const prev = S.db.budgets[key];
   if (!(v > 0)) { if (prev && !prev.deleted_at) put('budgets', { ...prev, limit_amount: 0 }); else if (budgetFor(cat || null, m)) put('budgets', { id: key, space_id: S.space, month: m, category_id: cat || null, limit_amount: 0, currency: 'UZS' }); return; }
