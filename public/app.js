@@ -3,7 +3,7 @@
 const TABLES = ['spaces', 'accounts', 'categories', 'transactions', 'budgets', 'settings'];
 const TZ = 5 * 3600000;
 const $app = document.getElementById('app');
-const S = { user: null, db: {}, queue: {}, cursor: 0, space: null, route: '/', month: null, rates: null, me: null, online: navigator.onLine, syncing: false, lastSync: 0, q: '', accF: '', pending: 0 };
+const S = { user: null, db: {}, queue: {}, cursor: 0, space: null, route: '/', month: null, rates: null, me: null, online: navigator.onLine, syncing: false, lastSync: 0, q: '', accF: '', uncat: false, pending: 0 };
 TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const rid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 14);
@@ -241,6 +241,7 @@ function txRow(t) {
 }
 
 // ---------- страницы ----------
+const uncatList = () => rows('transactions').filter(t => t.space_id === S.space && (t.type === 'expense' || t.type === 'income') && !t.category_id);
 function pgHome() {
   const m = monthKey(now()); const bud = budgetFor(null, m); const sp = spentByRoot(m);
   const accs = accounts().filter(a => !a.hidden); const tot = totalBase(); const rate = curRate();
@@ -250,20 +251,21 @@ function pgHome() {
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
   <div class="card"><div class="lbl">Balance</div><div class="big">${fmt(tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
   <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
   <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || '<div class="sub" style="padding:10px 0">Nothing yet</div>'}</div>`;
 }
 function pgTrans() {
   const [a, b] = monthRange(curMonth()); const q = S.q.toLowerCase();
-  const list = rows('transactions').filter(t => t.space_id === S.space && t.occurred_at >= a && t.occurred_at < b && (!S.accF || t.account_id === S.accF) &&
+  const list = rows('transactions').filter(t => t.space_id === S.space && (S.uncat ? (t.type !== 'transfer' && !t.category_id) : (t.occurred_at >= a && t.occurred_at < b)) && (!S.accF || t.account_id === S.accF) &&
     (!q || (t.note + ' ' + t.merchant + ' ' + catPath(t.category_id)).toLowerCase().includes(q))).sort((x, y) => y.occurred_at - x.occurred_at);
   const days = {}; list.forEach(t => { const k = dd(t.occurred_at); (days[k] = days[k] || []).push(t); });
   const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount_base, 0);
   return `<div class="top"><h1>Transactions</h1>${spaceSwitch()}</div>${mnav()}
   <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
   <input id="srch" class="f" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
-  <div class="chips"><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+  <div class="chips"><button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
   ${Object.keys(days).map(k => `<div class="day"><span>${k}</span><span>${fmt(days[k].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), 'UZS')}</span></div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || '<div class="sub" style="text-align:center;padding:30px">No transactions</div>'}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
@@ -451,6 +453,8 @@ document.addEventListener('click', async (e) => {
     case 'mprev': S.month = shiftMonth(curMonth(), -1); render(); break;
     case 'mnext': S.month = shiftMonth(curMonth(), 1); render(); break;
     case 'accf': S.accF = id; render(); break;
+    case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/transactions'); break;
+    case 'uncatf': S.uncat = !S.uncat; render(); break;
     case 'disp': S.dispCur = id; render(); break;
     case 'tx': openTx(id); break;
     case 'acc': go('/transactions'); S.accF = id; render(); break;

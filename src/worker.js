@@ -525,7 +525,18 @@ async function webhook(req, env) {
 }
 
 // ---------- роутер ----------
+async function uncategorizedReminder(env) {
+  const space = await personalSpace(env); if (!space) return;
+  const { results } = await env.DB.prepare("SELECT t.*, a.name AS acc FROM transactions t LEFT JOIN accounts a ON a.id=t.account_id WHERE t.space_id=? AND t.type IN ('expense','income') AND t.category_id IS NULL AND t.deleted_at IS NULL ORDER BY t.occurred_at DESC LIMIT 200").bind(space).all();
+  if (!results.length) return;
+  const lines = results.slice(0, 15).map(t => `${fmtTs(t.occurred_at)} · ${t.type === 'income' ? '+' : '−'}${fmtMoney(t.amount, t.currency)} · ${t.merchant || t.note || '—'} · ${t.acc || ''}`);
+  const more = results.length > 15 ? `\n…and ${results.length - 15} more` : '';
+  const text = `🗂 ${results.length} without category:\n${lines.join('\n')}${more}\n\nPick a category with the buttons under the original messages, or in the app: Home → “without category”.`;
+  for (const c of await chats(env)) await tgSend(env, c, text);
+}
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(uncategorizedReminder(env)); },
   async fetch(req, env, ctx) {
     const url = new URL(req.url); const path = url.pathname;
     if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
@@ -597,6 +608,7 @@ export default {
         const me = await tg(env, 'getMe', {});
         return J({ ok: r?.ok, bot: me?.result?.username, desc: r?.description });
       }
+      if (path === '/api/tg/remind' && req.method === 'POST') { await uncategorizedReminder(env); return J({ ok: true }); }
       if (path === '/api/import-log') return J((await env.DB.prepare('SELECT * FROM import_log ORDER BY id DESC LIMIT 30').all()).results);
       return J({ error: 'not_found' }, 404);
     } catch (e) {
