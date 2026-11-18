@@ -260,7 +260,8 @@ function render(soft) {
   const focus = document.activeElement && document.activeElement.id;
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
   if (keep) return; // не перерисовываем поверх вводимого текста
-  $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
+  { const op = document.querySelector('.navpill'), nv = op && op.offsetParent; if (op && nv && S.pill) { const r1 = op.getBoundingClientRect(), r0 = nv.getBoundingClientRect(); S.pill = { x: r1.left - r0.left - nv.clientLeft, y: S.pill.y, w: r1.width, h: S.pill.h }; } }
+  $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
   placePill();
   animateBalance();
@@ -279,7 +280,7 @@ function initSegs() {
     const b = { x: on.offsetLeft, w: on.offsetWidth, t: on.dataset.id || '' };
     if (pl._t === b.t + b.x + ':' + b.w) return; pl._t = b.t + b.x + ':' + b.w;
     pl.dataset.t = b.t; const prev = segPos[key];
-    const put = (x, w, anim) => { pl.style.transition = anim ? 'transform .3s cubic-bezier(.2,.8,.2,1),width .3s cubic-bezier(.2,.8,.2,1),background .3s ease' : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`; pl.style.opacity = 1; };
+    const put = (x, w, anim) => { pl.style.transition = anim ? 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1),background .22s ease' : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`; pl.style.opacity = 1; };
     if (fresh && prev && (prev.x !== b.x || prev.w !== b.w)) { put(prev.x, prev.w, false); requestAnimationFrame(() => requestAnimationFrame(() => put(b.x, b.w, true))); } else put(b.x, b.w, !fresh);
     segPos[key] = b;
   });
@@ -289,13 +290,13 @@ new MutationObserver(() => { cancelAnimationFrame(initSegs._r); initSegs._r = re
 const tabBox = (path) => { const a = document.querySelector(`.nav a[data-go="${path}"]`); return a ? { x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight } : null; };
 function setPill(b, anim) {
   const el = document.querySelector('.navpill'); if (!el || !b) return;
-  el.style.transition = anim ? 'transform .3s cubic-bezier(.2,.8,.2,1),width .3s ease' : 'none';
+  el.style.transition = anim ? 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1)' : 'none';
   el.style.width = b.w + 'px'; el.style.height = b.h + 'px'; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
 }
 const onTab = (path) => document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.go === path));
 function placePill() {
   const main = MAIN.includes(S.route) ? S.route : '/more'; const b = tabBox(main); if (!b) return;
-  if (S.pill && (S.pill.x !== b.x)) { setPill(S.pill, false); requestAnimationFrame(() => requestAnimationFrame(() => setPill(b, true))); } else setPill(b, false);
+  if (S.pill && Math.abs(S.pill.x - b.x) > 1) { setPill(S.pill, false); requestAnimationFrame(() => requestAnimationFrame(() => setPill(b, true))); } else setPill(b, false);
   S.pill = b;
 }
 function nav(on) {
@@ -341,7 +342,7 @@ function animateBalance() {
   const el = document.getElementById('bal'); if (!el) { S.balShown = null; return; }
   const to = +el.dataset.v; const from = S.balShown ?? to; S.balShown = to;
   if (from === to || S.hide) return; cancelAnimationFrame(balAnim);
-  const t0 = performance.now(), dur = 600;
+  const t0 = performance.now(), dur = 300;
   const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); const v = Math.round((from + (to - from) * e) / 100) * 100; const n = document.getElementById('bal'); if (!n) return; n.textContent = fmt(v, 'UZS'); if (k < 1) balAnim = requestAnimationFrame(step); };
   balAnim = requestAnimationFrame(step);
 }
@@ -420,7 +421,7 @@ function pgStats() {
   const donut = sp.total ? `<div class="donut"><svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const gap = items.length > 1 ? 1.5 : 0; const s = `<circle data-act="slice" data-id="${it.id}" class="sl" r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="34" stroke-dasharray="${Math.max(0.1, len - gap)} ${C - len + gap}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>
     <div class="dc" data-for=""><b>${f(sp.total)}</b><span>total</span></div>${items.map((it, i) => `<div class="dc" data-for="${it.id}"><b style="color:${colOf(it, i)}">${pct(it.v)}%</b><span>${it.c ? esc(it.c.name) : 'No category'}</span></div>`).join('')}</div>`
     + items.map((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? byId('categories', t.category_id).name : 'General'; subs[k] = (subs[k] || 0) + t.amount_base; } });
-      return `<div class="sdet" data-for="${it.id}"><div class="sdh"><b>${it.c ? esc(it.c.name) : 'No category'}</b><b>${f(it.v)}</b></div>${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="sdr"><span>${esc(k)}</span><span>${f(v)}</span></div>`).join('')}</div>`; }).join('')
+      return `<div class="sdet" data-for="${it.id}"><div class="sdin"><div class="sdh"><b>${it.c ? esc(it.c.name) : 'No category'}</b><b>${f(it.v)}</b></div>${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="sdr"><span>${esc(k)}</span><span>${f(v)}</span></div>`).join('')}</div></div>`; }).join('')
     : '<div class="sub">No expenses</div>';
   // столбцы по дням
   const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
@@ -478,7 +479,7 @@ document.addEventListener('pointermove', (e) => {
     if ((after && center > mid) || (!after && center < mid)) {
       const before = sibs.map(x => [x, x.offsetTop]);
       if (after) box.insertBefore(el, sb.nextSibling); else box.insertBefore(el, sb);
-      before.forEach(([x, t]) => { const d = t - x.offsetTop; if (d) { x.style.transition = 'none'; x.style.transform = `translateY(${d}px)`; requestAnimationFrame(() => { x.style.transition = 'transform .2s ease'; x.style.transform = ''; }); } });
+      before.forEach(([x, t]) => { const d = t - x.offsetTop; if (d) { x.style.transition = 'none'; x.style.transform = `translateY(${d}px)`; requestAnimationFrame(() => { x.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)'; x.style.transform = ''; }); } });
       break;
     }
   }
@@ -486,7 +487,7 @@ document.addEventListener('pointermove', (e) => {
 }, { passive: false });
 function endDrag() {
   if (!drag) return; const { el, box, moved } = drag; drag = null;
-  el.style.transition = 'transform .2s ease'; el.style.transform = ''; el.classList.remove('dragging');
+  el.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)'; el.style.transform = ''; el.classList.remove('dragging');
   setTimeout(() => { el.style.transition = ''; }, 220);
   if (!moved) return;
   const ids = [...box.children].filter(x => x.classList.contains('dr')).map(x => x.dataset.id);
@@ -672,7 +673,7 @@ document.addEventListener('click', async (e) => {
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
-    case 'theme': tryLS(() => localStorage.setItem('theme', id)); applyTheme(); render(true); break;
+    case 'theme': tryLS(() => localStorage.setItem('theme', id)); document.documentElement.classList.add('theming'); clearTimeout(window._thT); window._thT = setTimeout(() => document.documentElement.classList.remove('theming'), 320); applyTheme(); render(true); break;
     case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic(); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
     case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic(); render(true); break;
     case 'pwsave': {
@@ -773,7 +774,7 @@ boot();
     const i = MAIN.indexOf(S.route); const j = i + (dx < 0 ? 1 : -1);
     if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = j;
       if (j >= 0 && j < MAIN.length) { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); document.body.appendChild(nb); st.nb = nb; } }
-    const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? dx * 0.25 : dx;
+    const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? 0 : dx;
     const c = cur(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${st.dx}px)`; }
     if (st.nb) { st.nb.style.transition = 'none'; st.nb.style.transform = `translateX(${st.dx + (dx < 0 ? W() : -W()) + (dx < 0 ? 16 : -16)}px)`; }
     const pa = tabBox(S.route), pb = st.nb ? tabBox(MAIN[j]) : null;

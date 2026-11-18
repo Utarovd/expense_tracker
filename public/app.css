@@ -292,3 +292,33 @@ html{background:var(--bg)}
 /* плашка вкладки прямоугольнее */
 .navpill,:root[data-nav=glass] .navpill{border-radius:14px}
 .nav a,:root[data-nav=glass] .nav a{border-radius:14px}
+/* правила анимаций: 120–300 мс, без отскоков */
+.pg,.pg-next,.pg-prev{animation:pg .2s cubic-bezier(.2,.8,.2,1)}
+@keyframes pg{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.pg-next{animation-name:pgn}.pg-prev{animation-name:pgp}
+@keyframes pgn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+@keyframes pgp{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.seg>button{transition:color .18s ease 60ms}
+.nav a,:root[data-nav=glass] .nav a{transition:color .18s ease 60ms}
+.nav a span{transition:color .18s ease 60ms}
+.nav a.on span{transform:none}
+.seg button:active,.btn:active,.quick button:active,.fab:active,.cfa button:active{transform:scale(.97)}
+.seg button,.btn,.quick button,.fab,.cfa button{transition-property:color,background-color,transform,opacity;transition-duration:.12s;transition-timing-function:ease}
+.seg>button{transition:color .18s ease 60ms,transform .12s ease}
+.navadd button,:root .navadd button{transition:transform .12s ease,box-shadow .12s ease}
+.bar i{transition:width .3s cubic-bezier(.4,0,.2,1)}
+.trend rect{transition:height .3s cubic-bezier(.4,0,.2,1),y .3s cubic-bezier(.4,0,.2,1)}
+.sdet{display:grid;grid-template-rows:0fr;max-height:none;overflow:hidden;opacity:0;margin-top:0;transition:grid-template-rows .3s cubic-bezier(.4,0,.2,1),opacity .3s cubic-bezier(.4,0,.2,1)}
+.sdet.on{grid-template-rows:1fr;max-height:none;opacity:1;margin-top:0}
+.sdin{min-height:0;overflow:hidden;transform:translateY(-4px);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sdet.on .sdin{transform:none}
+.cfb{transition-duration:.2s;transition-timing-function:cubic-bezier(.2,.8,.2,1)}
+[data-act],[data-go],button,a,label,select{cursor:pointer}
+/* плавная смена темы */
+html.theming,html.theming *,html.theming *::before,html.theming *::after{transition:background-color .3s ease,color .3s ease,border-color .3s ease,fill .3s ease,stroke .3s ease,box-shadow .3s ease!important}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.sw{transition:background-color .3s cubic-bezier(.4,0,.2,1)}
+.sw::after{transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.toast{transition:opacity .25s cubic-bezier(.2,.8,.2,1),transform .25s cubic-bezier(.2,.8,.2,1)}
+.fab:active{transform:scale(.97)}
+.sdin>.sdh{margin-top:10px}
