@@ -250,12 +250,13 @@ function parseHumoSms(t) {
 function parseSms(text) {
   const t = String(text).replace(/\s+/g, ' ').trim();
   if (/^(HUMO|UZCARD)/i.test(t)) return parseHumoSms(t);
-  const m = t.match(/^(.+?):\s*(.+?),\s*[A-Z]{2},\s*(\d\d)\.(\d\d)\.(\d\d)\s+(\d\d):(\d\d)\s*,\s*karta\s*\*+(\d{4})\.\s*Miqdor:\s*([\d.,]+)\s*([A-Z]{3})(?:\s*Qoldiq:\s*([\d.,]+))?/i);
+  const m = t.match(/^(.+?):\s*(.+?)(?:,\s*[A-Z]{2},)?\s*(\d\d)\.(\d\d)\.(\d\d)\s+(\d\d):(\d\d)\s*,?\s*karta\s*\*+(\d{4})\.?\s*Miqdor:\s*([\d.,]+)\s*([A-Z]{3})[.,]?\s*(?:Qoldiq:\s*([\d.,]+))?/i);
   if (!m) return null;
   const [, kind, merchant, dd, mm, yy, HH, MM, last4, amt, cur, bal] = m;
   const k = kind.toLowerCase();
   let type = null;
   let kindX;
+  if (/naqd pul kirim/.test(k)) kindX = 'cashin';
   if (/chiqim|to'?lov|xarid|yechish|payment|purchase/.test(k)) type = 'expense';
   else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish/.test(k)) type = 'income';
   if (!type) return null;
@@ -513,7 +514,8 @@ async function webhook(req, env) {
       res = await ingest(env, { src: 'wallet', type: /refund|return|возврат/i.test(String(obj.type || '')) ? 'income' : 'expense', merchant: String(obj.merchant || obj.name || '').trim(), ts: now(), amount: toMinor(n), currency: cur, card: String(obj.card || ''), last4: undefined });
     }
   } else if (sms) {
-    const p = parseSms(sms);
+    const p = /^\s*Xato\b/i.test(sms) ? 'ignore' : parseSms(sms);
+    if (p === 'ignore') res = { dup: true, text: 'ignored' }; else
     if (p) res = await ingest(env, { src: 'sms', ...p });
     else { res = { text: '⚠ Couldn’t parse the SMS:\n' + String(sms).slice(0, 300) }; }
   } else res = { text: '' };
