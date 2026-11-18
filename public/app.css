@@ -398,3 +398,9 @@ input.hasclr.clrl{padding-left:42px!important}
 .sheet .shx:active{transform:scale(.94)}
 .sheet h2{padding-right:40px}
 .ov{overscroll-behavior:contain;touch-action:none}.sheet{overscroll-behavior:contain;touch-action:pan-y}
+/* смена темы через View Transitions: мягкий кроссфейд всей страницы */
+html.vt-theme::view-transition-old(root),html.vt-theme::view-transition-new(root){animation-duration:.3s;animation-timing-function:ease}
+html.vt-theme *{view-transition-name:none}
+.seghi{display:block;padding:0}
+.seg .seghi button{position:absolute;margin:0;white-space:nowrap;box-sizing:border-box;flex:none}
+html.vt-theme::view-transition-group(root){animation-duration:.3s}

@@ -254,6 +254,9 @@ let slideDir = '';
 const PAGES = () => ({ '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/accounts': pgAccounts, '/more': pgMore, '/budget': pgBudget, '/categories': pgCats, '/rate': pgRate, '/settings': pgSettings });
 function go(path, replace) { const a = MAIN.indexOf(S.route), b = MAIN.indexOf(path); slideDir = a > -1 && b > -1 ? (b > a ? 'pg-next' : 'pg-prev') : ''; if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
 window.addEventListener('popstate', () => { slideDir = ''; closeSheet(); S.route = location.pathname; render(); });
+// превью иконок в Settings не пересоздаются при перерисовке: те же загруженные картинки переносятся в новую разметку, без мигания
+const ICN = {};
+function keepIcons() { document.querySelectorAll('#app .icpick img').forEach(im => { const k = im.getAttribute('src'); const c = ICN[k]; if (c && c !== im) im.replaceWith(c); else if (!c) ICN[k] = im; }); }
 let lastRoute = null;
 function render(soft) {
   if (!S.user) { if (S.route !== '/login') { S.route = '/login'; history.replaceState({}, '', '/login'); } return renderLogin(); }
@@ -268,6 +271,7 @@ function render(soft) {
   { const op = document.querySelector('.navpill'), nv = op && op.offsetParent; if (op && nv && S.pill) { const r1 = op.getBoundingClientRect(), r0 = nv.getBoundingClientRect(); S.pill = { x: r1.left - r0.left - nv.clientLeft, y: S.pill.y, w: r1.width, h: S.pill.h }; } }
   $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
+  keepIcons();
   placePill();
   animateBalance();
   if (soft) window.scrollTo(0, scroll);
@@ -282,7 +286,8 @@ function segClone(sg, pl) {
     pl._sig = sig; if (!hi) { hi = document.createElement('div'); hi.className = 'seghi'; pl.appendChild(hi); }
     hi.innerHTML = ''; bs.forEach(b => { const c = b.cloneNode(true); c.className = ''; c.removeAttribute('data-act'); c.removeAttribute('disabled'); c.tabIndex = -1; c.setAttribute('aria-hidden', 'true'); hi.appendChild(c); });
   }
-  const cs = getComputedStyle(sg); hi.style.width = sg.clientWidth + 'px'; hi.style.height = sg.clientHeight + 'px'; hi.style.padding = cs.padding; hi.style.gap = cs.gap;
+  hi.style.width = sg.clientWidth + 'px'; hi.style.height = sg.clientHeight + 'px';
+  [...hi.children].forEach((c, n) => { const o = bs[n]; if (!o) return; c.style.left = o.offsetLeft + 'px'; c.style.top = o.offsetTop + 'px'; c.style.width = o.offsetWidth + 'px'; c.style.height = o.offsetHeight + 'px'; });
   return hi;
 }
 function segMove(pl, x, w, dur) {
@@ -592,6 +597,15 @@ function renderLogin() {
   $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div>${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential ? '<button class="btn full" data-act="pklogin" style="margin-bottom:10px">Sign in with Face ID</button>' : ''}<button class="btn ${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential ? 'sec ' : ''}full" data-act="login">Sign in</button></div>`;
 }
 
+// плавная смена темы: вся страница (фоны, градиенты, сияние, меню) перетекает за 300 мс без кадров чужого цвета
+function smoothTheme(fn) {
+  const de = document.documentElement;
+  if (document.startViewTransition && !document.hidden) {
+    de.classList.add('vt-theme');
+    try { const t = document.startViewTransition(fn); t.finished.finally(() => de.classList.remove('vt-theme')); return; } catch (_) { de.classList.remove('vt-theme'); }
+  }
+  de.classList.add('theming'); clearTimeout(window._thT); window._thT = setTimeout(() => de.classList.remove('theming'), 320); fn();
+}
 // ---------- окна ----------
 let F = {};
 function openTx(id, type) {
@@ -779,7 +793,7 @@ document.addEventListener('click', async (e) => {
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
-    case 'theme': tryLS(() => localStorage.setItem('theme', id)); document.documentElement.classList.add('theming'); clearTimeout(window._thT); window._thT = setTimeout(() => document.documentElement.classList.remove('theming'), 320); applyTheme(); render(true); break;
+    case 'theme': tryLS(() => localStorage.setItem('theme', id)); smoothTheme(() => { applyTheme(); render(true); }); break;
     case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic(); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
     case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic(); render(true); break;
     case 'pwsave': {
@@ -857,7 +871,7 @@ function applyTheme() {
   L('lati', `/icon-${ic}-180.png`); L('lfav', `/icon-${ic}-192.png`); L('lman', `/manifest-${ic}.webmanifest`);
   const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = dark ? '#16171b' : '#f8f5ee';
 }
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => smoothTheme(applyTheme));
 async function logoutLocal() { S.user = null; TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; }); S.cursor = 0; S.space = null; S.me = null; await idb.clear(); closeSheet(); render(); }
 
 // ---------- старт ----------
