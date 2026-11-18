@@ -891,15 +891,20 @@ boot();
 // кнопка «×» очистки поля: видна, пока поле в фокусе и в нём есть текст
 (() => {
   const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'clrx'; btn.setAttribute('aria-label', 'Clear'); btn.tabIndex = -1;
-  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+  btn.innerHTML = '<i><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></i>';
   let cur = null;
   const ok = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && el.offsetParent;
   const place = () => {
     if (!cur || !cur.isConnected || document.activeElement !== cur || !cur.value) { btn.classList.remove('on'); if (cur) cur.classList.remove('hasclr'); return; }
     if (btn.previousElementSibling !== cur) cur.after(btn);
     cur.classList.add('hasclr');
+    const cs = getComputedStyle(cur); const al = cs.textAlign; cur.classList.toggle('clrl', al === 'left' || al === 'start' || al === 'justify');
+    const bg = cs.backgroundColor, m = bg.match(/rgba?\(([^)]+)\)/); const pa = m ? m[1].split(',').slice(0, 3).join(',') : '255,255,255';
+    btn.style.setProperty('--fb', bg); btn.style.setProperty('--fb0', `rgba(${pa},0)`);
+    const bl = parseFloat(cs.borderLeftWidth) || 0, bt = parseFloat(cs.borderTopWidth) || 0, bb = parseFloat(cs.borderBottomWidth) || 0;
+    btn.style.borderRadius = `${cs.borderTopLeftRadius} 0 0 ${cs.borderBottomLeftRadius}`;
     btn.style.left = '0px'; btn.style.top = '0px'; const o = btn.getBoundingClientRect(), r = cur.getBoundingClientRect();
-    btn.style.left = (r.right - 34 - o.left) + 'px'; btn.style.top = (r.top + (r.height - 28) / 2 - o.top) + 'px';
+    btn.style.height = (r.height - bt - bb) + 'px'; btn.style.left = (r.left + bl - o.left) + 'px'; btn.style.top = (r.top + bt - o.top) + 'px';
     btn.classList.add('on');
   };
   const clear = (e) => { e.preventDefault(); e.stopPropagation(); if (!cur) return; const el = cur; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); const n = el.isConnected ? el : document.activeElement; if (n && n.focus) n.focus({ preventScroll: true }); haptic && haptic(); requestAnimationFrame(place); };

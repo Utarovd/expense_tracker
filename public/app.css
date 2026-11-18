@@ -349,15 +349,14 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{transit
  .row[data-act].tch::before,.row[data-go].tch::before,.legend[data-act].tch::before{transition-duration:.08s}
 }
 /* кнопка очистки поля */
-.clrx{position:absolute;z-index:3;width:28px;height:28px;border:0;padding:0;border-radius:50%;background:var(--mut);opacity:0;pointer-events:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:opacity .15s ease;-webkit-tap-highlight-color:transparent}
-.clrx.on{opacity:.55;pointer-events:auto}
-.clrx svg{transform:scale(.7);transition:transform .15s cubic-bezier(.2,.8,.2,1)}.clrx.on svg{transform:none}
-.clrx svg{width:14px;height:14px;fill:none;stroke:var(--card);stroke-width:3;stroke-linecap:round}
-@media (hover:hover) and (pointer:fine){.clrx.on:hover{opacity:.8}}
-.clrx.on:active{opacity:.85}
-input.hasclr{padding-right:40px!important}
-input.amtin.hasclr{padding-left:40px!important}
-input[data-bud].hasclr{padding-left:6px!important;padding-right:38px!important}
+.clrx{position:absolute;z-index:3;width:50px;border:0;padding:0;margin:0;background:linear-gradient(to right,var(--fb,#fff) 0,var(--fb,#fff) 36px,rgba(255,255,255,0) 50px);background:linear-gradient(to right,var(--fb,#fff) 0,var(--fb,#fff) 36px,var(--fb0,transparent) 50px);opacity:0;pointer-events:none;cursor:pointer;transition:opacity .15s ease;-webkit-tap-highlight-color:transparent}
+.clrx.on{opacity:1;pointer-events:auto}
+.clrx i{position:absolute;left:7px;top:50%;width:26px;height:26px;margin-top:-13px;border-radius:50%;background:var(--mut);opacity:.55;display:flex;align-items:center;justify-content:center;transition:opacity .15s ease}
+.clrx svg{width:13px;height:13px;fill:none;stroke:var(--card);stroke-width:3;stroke-linecap:round;transform:scale(.7);transition:transform .15s cubic-bezier(.2,.8,.2,1)}.clrx.on svg{transform:none}
+@media (hover:hover) and (pointer:fine){.clrx.on:hover i{opacity:.8}}
+.clrx.on:active i{opacity:.85}
+input.hasclr{padding-left:8px!important}
+input.hasclr.clrl{padding-left:42px!important}
 /* перетаскивание плашки меню */
 .nav>div{touch-action:none;-webkit-user-select:none;user-select:none}
 .nav a{-webkit-user-drag:none}
