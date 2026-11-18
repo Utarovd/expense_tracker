@@ -250,3 +250,18 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 :root[data-theme=dark] .trend .bx{fill:url(#gexp)}
 .amtin.amt-expense{color:#d1213b}.amtin.amt-income{color:#05875f}.amtin.amt-transfer{color:#1d4ed8}
 :root[data-theme=dark] .amtin.amt-expense{color:#ff7b7b}:root[data-theme=dark] .amtin.amt-income{color:#4ade9a}:root[data-theme=dark] .amtin.amt-transfer{color:#7fb2ff}
+
+/* плавные сегменты */
+.seg{position:relative;isolation:isolate}
+.seg>button{position:relative;z-index:1;transition:color .25s ease}
+.seg>button.on,.seg.tt>button.on[data-id]{background:transparent!important;box-shadow:none!important}
+.segpill{position:absolute;left:0;top:3px;bottom:3px;border-radius:11px;background:var(--grad2);box-shadow:0 3px 10px rgba(19,38,82,.22);opacity:0;z-index:0;pointer-events:none}
+:root[data-theme=dark] .segpill{box-shadow:0 3px 10px rgba(0,0,0,.4)}
+.seg.tt>.segpill[data-t=expense]{background:var(--g-exp);box-shadow:0 4px 12px rgba(209,33,59,.3)}
+.seg.tt>.segpill[data-t=income]{background:var(--g-inc);box-shadow:0 4px 12px rgba(5,135,95,.3)}
+.seg.tt>.segpill[data-t=transfer]{background:var(--g-trf);box-shadow:0 4px 12px rgba(29,78,216,.3)}
+.seg.tt>button.on{color:#fff}
+/* вкладки крупнее */
+.nav a{margin:4px 2px 4px;height:50px;font-size:11px}
+.nav a span{height:26px}
+.nav a .i{width:25px;height:25px}

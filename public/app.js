@@ -267,6 +267,24 @@ function render(soft) {
   if (soft) window.scrollTo(0, scroll);
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
+// плавные сегменты: одна плашка едет от прошлого выбора к новому
+const segPos = {};
+function initSegs() {
+  document.querySelectorAll('.seg').forEach((sg) => {
+    const on = sg.querySelector('button.on'); const first = sg.querySelector('button'); if (!first) return;
+    const key = (first.dataset.act || '') + ':' + (sg.closest('.ov') ? 'ov' : S.route);
+    let pl = sg.querySelector(':scope > .segpill'); const fresh = !pl;
+    if (!pl) { pl = document.createElement('i'); pl.className = 'segpill'; sg.prepend(pl); }
+    if (!on) { pl.style.opacity = 0; return; }
+    const b = { x: on.offsetLeft, w: on.offsetWidth, t: on.dataset.id || '' };
+    if (pl._t === b.t + b.x + ':' + b.w) return; pl._t = b.t + b.x + ':' + b.w;
+    pl.dataset.t = b.t; const prev = segPos[key];
+    const put = (x, w, anim) => { pl.style.transition = anim ? 'transform .3s cubic-bezier(.2,.8,.2,1),width .3s cubic-bezier(.2,.8,.2,1),background .3s ease' : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`; pl.style.opacity = 1; };
+    if (fresh && prev && (prev.x !== b.x || prev.w !== b.w)) { put(prev.x, prev.w, false); requestAnimationFrame(() => requestAnimationFrame(() => put(b.x, b.w, true))); } else put(b.x, b.w, !fresh);
+    segPos[key] = b;
+  });
+}
+new MutationObserver(() => { cancelAnimationFrame(initSegs._r); initSegs._r = requestAnimationFrame(initSegs); }).observe(document.documentElement, { childList: true, subtree: true });
 // плашка выбранной вкладки: одна на всё меню, плавно едет между вкладками и за свайпом
 const tabBox = (path) => { const a = document.querySelector(`.nav a[data-go="${path}"]`); return a ? { x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight } : null; };
 function setPill(b, anim) {
@@ -281,7 +299,7 @@ function placePill() {
   S.pill = b;
 }
 function nav(on) {
-  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'Transactions'], ['/stats', 'chart', 'Stats'], ['/more', 'user', 'Profile']];
+  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'History'], ['/stats', 'chart', 'Stats'], ['/more', 'user', 'Profile']];
   const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
   return `<div class="nav"><div><i class="navpill"></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
 }
