@@ -236,15 +236,16 @@ async function findDup(env, accId, type, amount, ts, source) {
 // ---------- СМС банка ----------
 function parseHumoSms(t) {
   // HUMOCARD *7052: oplata 14000.00 UZS; OCTOBANK YANDEX DELI; 26-11-09 20:33; Dostupno: 414301.00 UZS
-  const m = t.match(/^(?:HUMOCARD|UZCARD|HUMO|UZCARD-?\w*)\s*\*+(\d{4}):\s*(\S+)\s+([\d.,]+)\s*([A-Z]{3});\s*(.+?);\s*(\d\d)-(\d\d)-(\d\d)\s+(\d\d):(\d\d);?\s*(?:Dostupno:\s*([\d.,]+))?/i);
+  const m = t.match(/^(?:HUMOCARD|UZCARD|HUMO|UZCARD-?\w*)\s*\*+(\d{4}):\s*([a-z]+(?:\s+[a-z]+)*?)\s+([\d.,]+)\s*([A-Z]{3});\s*(.+?);\s*(\d\d)-(\d\d)-(\d\d)\s+(\d\d):(\d\d);?\s*(?:Dostupno:\s*([\d.,]+))?/i);
   if (!m) return null;
   const [, last4, verb, amt, cur, merchant, yy, mm, dd, HH, MM, bal] = m;
-  const v = verb.toLowerCase(); let type = null;
-  if (/^oplata|pokupka|snyatie|spisanie|perevod-?(ischod|iskh)?$/.test(v)) type = 'expense';
-  else if (/popoln|zachisl|postupl|vozvrat|kirim/.test(v)) type = 'income';
+  const v = verb.toLowerCase(); let type = null, kind;
+  if (/^(snjatie|snyatie|vydacha)|nalichn/.test(v)) { type = 'expense'; kind = 'cashout'; }
+  else if (/^(oplata|pokupka|spisanie)/.test(v)) type = 'expense';
+  else if (/popoln|zachisl|postupl|vozvrat|kirim/.test(v)) { type = 'income'; if (/\bATM\b/i.test(merchant) && !/UZCARD|HUMO/i.test(merchant)) kind = 'cashin'; }
   if (!type) return null;
   const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
-  return { type, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${yy}${mm}${dd}${HH}${MM}:${amt}:${bal || ''}` };
+  return { type, kind, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${yy}${mm}${dd}${HH}${MM}:${amt}:${bal || ''}` };
 }
 function parseSms(text) {
   const t = String(text).replace(/\s+/g, ' ').trim();
@@ -254,11 +255,13 @@ function parseSms(text) {
   const [, kind, merchant, dd, mm, yy, HH, MM, last4, amt, cur, bal] = m;
   const k = kind.toLowerCase();
   let type = null;
-  if (/to'?lov|xarid|yechish|payment|purchase/.test(k)) type = 'expense';
+  let kindX;
+  if (/chiqim/.test(k)) { type = 'expense'; kindX = 'cashout'; }
+  else if (/to'?lov|xarid|yechish|payment|purchase/.test(k)) type = 'expense';
   else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish/.test(k)) type = 'income';
   if (!type) return null;
   const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
-  return { type, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${dd}${mm}${yy}${HH}${MM}:${amt}:${bal || ''}` };
+  return { type, kind: kindX, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${dd}${mm}${yy}${HH}${MM}:${amt}:${bal || ''}` };
 }
 
 // ---------- запись операции из источника ----------
@@ -289,18 +292,36 @@ async function ingest(env, ev) {
   const m = (ev.merchant || '').toUpperCase();
   const sms = ev.src === 'sms';
   const stmts = []; let txId = rid(); let notice;
-  // перевод между своими картами (Humo ···7052 <-> Ipak Yuli ···3153): одна пара операций, СМС с двух сторон склеиваются
-  if (sms && ((ev.type === 'expense' && /IPAK YULI M ULUGBEK|HUMO2UZCARD/.test(m) && acc.card_last4 === '7052') || (ev.type === 'income' && /HUMO2UZCARD/.test(m) && acc.card_last4 === '3153'))) {
+  // переводы между своими счетами: Humo ···7052, Ipak Yuli ···3153, Cash
+  if (sms && ev.type !== 'transfer') {
     const { results: all } = await env.DB.prepare('SELECT * FROM accounts WHERE space_id=? AND deleted_at IS NULL').bind(space).all();
-    const humo = all.find(a => a.card_last4 === '7052'), ipak = all.find(a => a.card_last4 === '3153');
-    if (humo && ipak) {
-      const ex = await env.DB.prepare("SELECT id FROM transactions WHERE type='transfer' AND account_id=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(humo.id, -ev.amount, ts - 15 * 60000, ts + 15 * 60000).first();
+    const humo = all.find(a => a.card_last4 === '7052'), ipak = all.find(a => a.card_last4 === '3153'), cash = all.find(a => a.type === 'cash');
+    const own = acc === undefined ? null : (humo && acc.id === humo.id) ? ipak : (ipak && acc.id === ipak.id) ? humo : null;
+    const pair = async (from, to, note) => {
+      const ex = await env.DB.prepare("SELECT id FROM transactions WHERE type='transfer' AND account_id=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(from.id, -ev.amount, ts - 15 * 60000, ts + 15 * 60000).first();
       if (ex) { await touch(env); return { dup: true, text: 'merged' }; }
-      const g = rid(); const mine = acc.id === humo.id;
-      stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: 'transfer', account_id: humo.id, amount: -ev.amount, currency: 'UZS', fx_rate: 1, amount_base: -ev.amount, note: 'Humo → Ipak Yuli card', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: mine ? ev.src : 'sms_leg', external_id: mine ? (ev.ext || null) : null }));
-      stmts.push(insertRow(env, 'transactions', { id: rid(), space_id: space, type: 'transfer', account_id: ipak.id, amount: ev.amount, currency: 'UZS', fx_rate: 1, amount_base: ev.amount, note: 'Humo → Ipak Yuli card', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: mine ? 'sms_leg' : ev.src, external_id: mine ? null : (ev.ext || null) }));
-      await env.DB.batch(stmts); await touch(env);
-      return { text: `🔁 Transfer: ${fmtMoney(ev.amount, 'UZS')} ${humo.name} → ${ipak.name}` + await qoldiq(env, space, acc, ev), txId, noCat: true };
+      const g = rid(); const mine = acc.id === from.id; const id2 = rid();
+      const leg = (id, a, amount, own) => insertRow(env, 'transactions', { id, space_id: space, type: 'transfer', account_id: a.id, amount, currency: 'UZS', fx_rate: 1, amount_base: amount, note, merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: own ? ev.src : 'sms_leg', external_id: own ? (ev.ext || null) : null });
+      await env.DB.batch([leg(mine ? txId : id2, from, -ev.amount, mine), leg(mine ? id2 : txId, to, ev.amount, !mine)]); await touch(env);
+      return { text: `🔁 Transfer: ${fmtMoney(ev.amount, 'UZS')} ${from.name} → ${to.name}` + await qoldiq(env, space, acc, ev), txId, noCat: true };
+    };
+    if (own && (ev.currency || 'UZS') === 'UZS') {
+      const out = ev.type === 'expense';
+      const from = out ? acc : own, to = out ? own : acc;
+      if (/IPAK YULI M ULUGBEK|HUMO\s*2\s*UZCARD|UZCARD\s*2\s*HUMO/.test(m)) return pair(from, to, 'Between own cards');
+      const tl = await env.DB.prepare("SELECT id FROM transactions WHERE account_id=? AND type='transfer' AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(own.id, out ? ev.amount : -ev.amount, ts - 10 * 60000, ts + 10 * 60000).first();
+      if (tl) { await touch(env); return { dup: true, text: 'merged' }; }
+      // встречная операция на другой своей карте (та же сумма, ±10 мин): превращаем обе в перевод
+      const opp = await env.DB.prepare("SELECT * FROM transactions WHERE account_id=? AND type=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(own.id, out ? 'income' : 'expense', ev.amount, ts - 10 * 60000, ts + 10 * 60000).first();
+      if (opp) {
+        const g = rid(), t2 = now();
+        await env.DB.prepare('UPDATE transactions SET type=?, amount=?, amount_base=?, category_id=NULL, transfer_group_id=?, note=?, updated_at=?, synced_at=? WHERE id=?').bind('transfer', out ? opp.amount : -opp.amount, out ? opp.amount : -opp.amount, g, 'Between own cards', t2, t2, opp.id).run();
+        await env.DB.batch([insertRow(env, 'transactions', { id: txId, space_id: space, type: 'transfer', account_id: acc.id, amount: out ? -ev.amount : ev.amount, currency: 'UZS', fx_rate: 1, amount_base: out ? -ev.amount : ev.amount, note: 'Between own cards', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: ev.src, external_id: ev.ext || null })]); await touch(env);
+        return { text: `🔁 Transfer: ${fmtMoney(ev.amount, 'UZS')} ${from.name} → ${to.name} (matched two SMS)` + await qoldiq(env, space, acc, ev), txId, noCat: true };
+      }
+    }
+    if (cash && (ev.kind === 'cashout' || ev.kind === 'cashin') && (ev.currency || 'UZS') === 'UZS' && acc.id !== cash.id) {
+      return ev.kind === 'cashout' ? pair(acc, cash, 'Cash withdrawal') : pair(cash, acc, 'Cash deposit');
     }
   }
   if (sms && /IYB MOBILE EXCHANGE|IPAK YULI BANK KONV/.test(m) && ev.type === 'expense' && acc.currency === 'UZS') {
