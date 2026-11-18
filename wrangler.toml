@@ -1,6 +1,8 @@
 name = "expense-tracker"
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
+routes = [{ pattern = "budget.in-manager.uz", custom_domain = true }]
+workers_dev = true
 
 [assets]
 directory = "public"
