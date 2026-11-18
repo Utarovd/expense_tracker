@@ -563,6 +563,12 @@ function drawTx() {
   <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full save-${F.type}" data-act="txsave">Save</button></div>`);
   const am = document.getElementById('f-amount'); if (am && !F.id && !F.amount) setTimeout(() => am.focus(), 320);
 }
+function setFType(id) { const was = F.type; if (was === id) return;
+      if (id === 'transfer' && was !== 'transfer') { if (F.account) F.from = F.account; if (F.to === F.from) F.to = ''; }
+      else if (was === 'transfer' && id !== 'transfer' && F.from) F.account = F.from;
+      F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx();
+      if (!F.id) { const am = document.getElementById('f-amount'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
+      }
 function saveTx() {
   const amt = num(F.amount); if (!(amt > 0)) return toast('Enter an amount');
   const minor = Math.round(amt * 100); const ts = fromLocal(F.date);
@@ -656,12 +662,7 @@ document.addEventListener('click', async (e) => {
     case 'tx': openTx(id); break;
     case 'acc': go('/transactions'); S.accF = id; render(); break;
     case 'addtransfer': openTx(null, 'transfer'); break;
-    case 'ftype': { const was = F.type; if (was === id) break;
-      if (id === 'transfer' && was !== 'transfer') { if (F.account) F.from = F.account; if (F.to === F.from) F.to = ''; }
-      else if (was === 'transfer' && id !== 'transfer' && F.from) F.account = F.from;
-      F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx();
-      if (!F.id) { const am = document.getElementById('f-amount'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
-      break; }
+    case 'ftype': setFType(id); break;
     case 'txsave': saveTx(); break;
     case 'txdel': if (await ask(F.type === 'transfer' ? 'Delete this transfer?' : 'Delete this transaction?', 'This can’t be undone.')) deleteTx(); break;
     case 'accedit': openAcc(id); break;
@@ -769,7 +770,7 @@ boot();
   function cleanup() { if (!st) return; if (st.nb) st.nb.remove(); const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; } st = null; }
   document.addEventListener('touchstart', (e) => {
     cleanup();
-    if (e.touches.length !== 1 || ovEl || !S.user || !MAIN.includes(S.route) || e.target.closest('input,select,textarea,.chips,.ov,.dwrap,[data-hdl],.trend')) return;
+    if (e.touches.length !== 1 || ovEl || !S.user || !MAIN.includes(S.route) || e.target.closest('input,select,textarea,.chips,.ov,.dwrap,[data-hdl],.trend,.nav')) return;
     const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
@@ -834,3 +835,87 @@ boot();
   document.addEventListener('input', () => requestAnimationFrame(place));
   window.addEventListener('resize', () => requestAnimationFrame(place));
 })();
+// окно «+»: свайп влево/вправо переключает Expense / Income / Transfer, плашка едет за пальцем
+(() => {
+  const TY = ['expense', 'income', 'transfer'];
+  let st = null;
+  const parts = () => { const sh = sheetEl(); return sh ? [...sh.children].filter(e => e.tagName !== 'H2' && !e.classList.contains('seg')) : []; };
+  document.addEventListener('touchstart', (e) => {
+    st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
+    const seg = sh.querySelector('.seg.tt'); if (!seg || e.target.closest('input[type=datetime-local],.clrx')) return;
+    const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, i: TY.indexOf(F.type), j: -1, dx: 0 };
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
+    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { st = null; return; } }
+    e.preventDefault();
+    const j = st.i + (dx < 0 ? 1 : -1); const bs = [...st.seg.querySelectorAll(':scope > button')]; const a = bs[st.i], b = bs[j];
+    const okb = b && !b.disabled; st.j = okb ? j : -1; st.dx = okb ? dx : 0;
+    const pl = st.seg.querySelector('.segpill'); if (!pl || !a) return;
+    const k = okb ? Math.min(1, Math.abs(dx) / (st.seg.offsetWidth * 0.45)) : 0; st.k = k;
+    const x = a.offsetLeft + ((okb ? b.offsetLeft : a.offsetLeft) - a.offsetLeft) * k, w = a.offsetWidth + ((okb ? b.offsetWidth : a.offsetWidth) - a.offsetWidth) * k;
+    bs.forEach((x, n) => x.classList.toggle('on', n === (okb && k > 0.5 ? j : st.i)));
+    pl.dataset.t = TY[okb && k > 0.5 ? j : st.i];
+    st.px = x; st.pw = w; pl.style.transition = 'none'; pl.style.transform = `translateX(${x}px)`; pl.style.width = w + 'px';
+    parts().forEach(el => { el.style.transition = 'none'; el.style.transform = `translateX(${st.dx * 0.25}px)`; el.style.opacity = 1 - k * 0.35; });
+  }, { passive: false });
+  const end = () => {
+    if (!st || st.lock !== 'x') { st = null; return; } const s0 = st; st = null;
+    const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const done = s0.j > -1 && (s0.k > 0.35 || (v > 0.5 && Math.abs(s0.dx) > 30));
+    if (done) {
+      segPos['ftype:ov'] = { x: s0.px, w: s0.pw, t: TY[s0.i] };
+      haptic(); setFType(TY[s0.j]);
+      const dir = s0.dx < 0 ? 'pg-next' : 'pg-prev'; parts().forEach(el => el.classList.add(dir));
+    } else {
+      const pl = s0.seg.querySelector('.segpill'), a = s0.seg.querySelectorAll(':scope > button')[s0.i];
+      s0.seg.querySelectorAll(':scope > button').forEach((x, n) => x.classList.toggle('on', n === s0.i));
+      if (pl) pl.dataset.t = TY[s0.i];
+      if (pl && a) { pl.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1)'; pl.style.transform = `translateX(${a.offsetLeft}px)`; pl.style.width = a.offsetWidth + 'px'; }
+      parts().forEach(el => { el.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1),opacity .22s ease'; el.style.transform = ''; el.style.opacity = ''; });
+    }
+  };
+  document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', end, { passive: true });
+})();
+
+// нижнее меню: плашку выбранной вкладки можно вести пальцем или мышью; в стиле Liquid Glass она становится линзой
+(() => {
+  let d = null, justDragged = false;
+  const inner = () => document.querySelector('.nav>div');
+  const tabs = () => [...document.querySelectorAll('.nav a[data-go]')];
+  const near = (cx) => { let best = null, bd = 1e9; tabs().forEach(a => { const c = a.offsetLeft + a.offsetWidth / 2, dd = Math.abs(c - cx); if (dd < bd) { bd = dd; best = a; } }); return best; };
+  const lensOn = () => document.documentElement.dataset.nav === 'glass';
+  function paint(cx) {
+    const ts = tabs(); if (!ts.length) return; const lo = ts[0].offsetLeft + ts[0].offsetWidth / 2, hi = ts[ts.length - 1].offsetLeft + ts[ts.length - 1].offsetWidth / 2;
+    cx = Math.max(lo, Math.min(hi, cx)); d.cx = cx;
+    const a = near(cx), w = a.offsetWidth, h = a.offsetHeight, y = a.offsetTop;
+    const el = document.querySelector('.navpill'); if (!el) return;
+    el.style.transition = d.started ? 'none' : 'transform .12s ease,width .12s ease';
+    el.style.width = w + 'px'; el.style.height = h + 'px'; el.style.transform = `translate(${cx - w / 2}px,${y}px)` + (lensOn() ? ' scale(1.14)' : ''); el.style.opacity = 1;
+    ts.forEach(t => { const c = t.offsetLeft + t.offsetWidth / 2, k = Math.max(0, 1 - Math.abs(c - cx) / (w * 0.75)); const sp = t.querySelector('span'); if (sp) { sp.style.transition = 'none'; sp.style.transform = lensOn() && k ? `scale(${1 + 0.22 * k})` : ''; } });
+    onTab(a.dataset.go); d.target = a.dataset.go;
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const nv = e.target.closest('.nav'); if (!nv || e.target.closest('.navadd') || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const box = inner(); if (!box) return;
+    d = { id: e.pointerId, x0: e.clientX, left: box.getBoundingClientRect().left, started: false, cx: 0, target: null };
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return; const dx = e.clientX - d.x0;
+    if (!d.started) { if (Math.abs(dx) < 6) return; d.started = true; const nv = document.querySelector('.nav'); nv.classList.add('drag'); document.querySelectorAll('.nav .tch').forEach(x => x.classList.remove('tch')); }
+    paint(e.clientX - d.left);
+  });
+  function stop(e) {
+    if (!d || (e && e.pointerId !== d.id)) return; const d0 = d; d = null;
+    const nv = document.querySelector('.nav'); if (nv) nv.classList.remove('drag');
+    tabs().forEach(t => { const sp = t.querySelector('span'); if (sp) { sp.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)'; sp.style.transform = ''; } });
+    if (!d0.started) return;
+    justDragged = true; setTimeout(() => { justDragged = false; }, 50);
+    const path = d0.target || (MAIN.includes(S.route) ? S.route : '/more');
+    const el = document.querySelector('.navpill'); if (el) { const tb = tabBox(path); if (tb) { setPill(tb, true); S.pill = tb; } }
+    haptic();
+    if (path !== (MAIN.includes(S.route) ? S.route : '/more')) setTimeout(() => go(path), 0); else onTab(path);
+  }
+  document.addEventListener('pointerup', stop); document.addEventListener('pointercancel', stop);
+  window.addEventListener('click', (e) => { if (justDragged && e.target.closest('.nav')) { e.preventDefault(); e.stopPropagation(); justDragged = false; } }, true);
+})();
+document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target.closest('.nav')) e.preventDefault(); });
