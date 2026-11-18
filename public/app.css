@@ -322,3 +322,31 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{transit
 .toast{transition:opacity .25s cubic-bezier(.2,.8,.2,1),transform .25s cubic-bezier(.2,.8,.2,1)}
 .fab:active{transform:scale(.97)}
 .sdin>.sdh{margin-top:10px}
+/* подсветка всей нажимаемой области: на Mac под курсором, на iPhone в момент касания */
+:root{--hov:rgba(19,38,82,.07);--hovring:rgba(19,38,82,.32)}
+:root[data-theme=dark]{--hov:rgba(255,255,255,.08);--hovring:rgba(245,197,24,.5)}
+.row[data-act],.row[data-go],.legend[data-act]{position:relative;isolation:isolate}
+.row[data-act]::before,.row[data-go]::before,.legend[data-act]::before{content:"";position:absolute;top:2px;bottom:2px;left:-10px;right:-10px;border-radius:12px;background:var(--hov);opacity:0;z-index:-1;pointer-events:none;transition:opacity .25s ease}
+.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go]{outline:2px solid transparent;outline-offset:0}
+.f{outline:1.5px solid transparent;outline-offset:0}
+.seg>button{transition:color .18s ease 60ms,transform .12s ease,background-color .2s ease}
+.nav a,:root[data-nav=glass] .nav a{transition:color .18s ease 60ms,background-color .2s ease}
+.btn,.quick button,.addsub,.eyeb,.fab,.cfa button,.card[data-act],.card[data-go],.f{transition-property:color,background-color,transform,opacity,outline-color;transition-duration:.12s,.2s,.12s,.2s,.2s;transition-timing-function:ease}
+@media (hover:hover) and (pointer:fine){
+ .row[data-act]:hover::before,.row[data-go]:hover::before,.legend[data-act]:hover::before{opacity:1}
+ .seg>button:not(.on):not(:disabled):hover{background-color:var(--hov)!important;color:var(--tx)}
+ .nav a:not(.on):hover{background-color:var(--hov);color:var(--tx)}
+ .btn:hover,.quick button:hover,.addsub:hover,.eyeb:hover,.fab:hover,.card[data-act]:hover,.card[data-go]:hover{outline-color:var(--hovring)}
+ .f:not(:focus):hover{outline-color:var(--hovring)}
+ .cfa button:hover{background-color:var(--hov)}
+}
+@media (hover:none){
+ .row[data-act].tch::before,.row[data-go].tch::before,.legend[data-act].tch::before{opacity:1}
+ .seg>button:not(.on):not(:disabled).tch{background-color:var(--hov)!important;color:var(--tx)}
+ .nav a:not(.on).tch{background-color:var(--hov);color:var(--tx)}
+ .btn.tch,.quick button.tch,.addsub.tch,.eyeb.tch,.fab.tch,.card[data-act].tch,.card[data-go].tch{outline-color:var(--hovring)}
+ .f:not(:focus).tch{outline-color:var(--hovring)}
+ .cfa button.tch{background-color:var(--hov)}
+ .row[data-act].tch::before,.row[data-go].tch::before,.legend[data-act].tch::before{transition-duration:.08s}
+}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

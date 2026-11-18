@@ -801,3 +801,14 @@ boot();
   }
   document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', end, { passive: true });
 })();
+// подсветка нажимаемой области на телефоне: класс .tch на время касания, плавно гаснет после отпускания
+(() => {
+  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f';
+  let el = null, x0 = 0, y0 = 0;
+  const off = () => { if (el) el.classList.remove('tch'); el = null; };
+  document.addEventListener('touchstart', (e) => { off(); const t = e.target.closest && e.target.closest(SEL); if (!t || t.disabled) return; el = t; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; el.classList.add('tch'); }, { passive: true });
+  document.addEventListener('touchmove', (e) => { if (el && Math.hypot(e.touches[0].clientX - x0, e.touches[0].clientY - y0) > 8) off(); }, { passive: true });
+  document.addEventListener('touchend', () => setTimeout(off, 60), { passive: true });
+  document.addEventListener('touchcancel', off, { passive: true });
+  window.addEventListener('scroll', off, { passive: true });
+})();
