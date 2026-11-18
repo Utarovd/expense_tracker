@@ -266,6 +266,12 @@ async function ingest(env, ev) {
     return { dup: true, text: 'merged' };
   }
   const rate = await effRate(env);
+  let converted = '';
+  if (acc.currency === 'USD' && (ev.currency === 'UZS' || (ev.currency == null && ev.amount / 100 >= 20000))) {
+    // оплата в сумах по долларовой карте: пересчитываем в USD по текущему курсу
+    converted = ` (${fmtMoney(ev.amount, 'UZS')} → at rate ${Math.round(rate)})`;
+    ev.amount = Math.round(ev.amount / rate); ev.currency = 'USD';
+  }
   const m = (ev.merchant || '').toUpperCase();
   const sms = ev.src === 'sms';
   const stmts = []; let txId = rid(); let notice;
@@ -287,7 +293,7 @@ async function ingest(env, ev) {
   let catName = '';
   if (mapped) { const c = await env.DB.prepare('SELECT c.name, p.name AS pn FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE c.id=?').bind(mapped).first(); if (c) catName = (c.pn ? c.pn + ' › ' : '') + c.name; }
   const sign = ev.type === 'income' ? '+' : '−';
-  const text = `${ev.type === 'income' ? '📥' : '💳'} ${sign}${fmtMoney(ev.amount, acc.currency)} · ${ev.merchant || '—'}\n${acc.name} · ${fmtTs(ts)}${catName ? '\n📂 ' + catName : ''}` + await qoldiq(env, space, acc, ev);
+  const text = `${ev.type === 'income' ? '📥' : '💳'} ${sign}${fmtMoney(ev.amount, acc.currency)} · ${ev.merchant || '—'}${converted}\n${acc.name} · ${fmtTs(ts)}${catName ? '\n📂 ' + catName : ''}` + await qoldiq(env, space, acc, ev);
   return { text, txId, kind: ev.type === 'income' ? 'income' : 'expense', mapped: !!mapped, space };
 }
 async function qoldiq(env, space, acc, ev) {
@@ -455,7 +461,7 @@ async function webhook(req, env) {
     const amtStr = String(obj.amount);
     let n = parseNum(amtStr); if (!(n > 0)) { res = { text: '' }; }
     else {
-      const cur = /\$|usd/i.test(amtStr + ' ' + (obj.currency || '')) ? 'USD' : 'UZS';
+      const ct = amtStr + ' ' + (obj.currency || ''); const cur = /\$|usd/i.test(ct) ? 'USD' : /uzs|sum|сум|so'm|soum/i.test(ct) ? 'UZS' : null;
       res = await ingest(env, { src: 'wallet', type: /refund|return|возврат/i.test(String(obj.type || '')) ? 'income' : 'expense', merchant: String(obj.merchant || obj.name || '').trim(), ts: now(), amount: toMinor(n), currency: cur, card: String(obj.card || ''), last4: undefined });
     }
   } else if (sms) {
