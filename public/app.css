@@ -265,3 +265,12 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .nav a{margin:4px 2px 4px;height:50px;font-size:11px}
 .nav a span{height:26px}
 .nav a .i{width:25px;height:25px}
+
+/* фон: Ivory с сиянием (Doniyor, 19.11) */
+body{background:transparent}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none}
+:root{--bg:#f5f1e8}
+:root:not([data-theme=dark]) body::before{background:url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'220'%20height%3D'220'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'.85'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200%20%200%200%200%200%200%20%200%200%200%200%200%20%200%200%200%200.07%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E"),radial-gradient(90% 45% at 15% -5%,rgba(31,59,114,.20),transparent 70%),radial-gradient(70% 40% at 105% 100%,rgba(245,197,24,.18),transparent 70%),radial-gradient(120% 70% at 50% -10%,#fffdf7 0%,#f5f1e8 55%,#ece6d8 100%)}
+:root[data-theme=dark]{--bg:#121316}
+:root[data-theme=dark] body::before{background:url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'220'%20height%3D'220'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'.85'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200%20%200%200%200%200%200%20%200%200%200%200%200%20%200%200%200%200.1%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E"),radial-gradient(90% 50% at 10% -5%,rgba(47,98,214,.30),transparent 70%),radial-gradient(70% 40% at 105% 100%,rgba(245,197,24,.10),transparent 70%),radial-gradient(120% 70% at 50% -10%,#1c1e23 0%,#131417 55%,#0d0e10 100%)}
+html{background:var(--bg)}
