@@ -225,7 +225,7 @@ function ask(title, msg, okLabel = 'Delete') {
 }
 
 // ---------- роутинг ----------
-const MAIN = ['/', '/transactions', '/stats', '/accounts', '/more'];
+const MAIN = ['/', '/transactions', '/stats', '/more'];
 let slideDir = '';
 function go(path, replace) { const a = MAIN.indexOf(S.route), b = MAIN.indexOf(path); slideDir = a > -1 && b > -1 ? (b > a ? 'pg-next' : 'pg-prev') : ''; if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
 window.addEventListener('popstate', () => { slideDir = ''; closeSheet(); S.route = location.pathname; render(); });
@@ -236,7 +236,7 @@ function render(soft) {
   const r = S.route;
   const pages = { '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/accounts': pgAccounts, '/more': pgMore, '/budget': pgBudget, '/categories': pgCats, '/rate': pgRate, '/settings': pgSettings };
   const fn = pages[r] || pgHome;
-  const main = ['/', '/transactions', '/stats', '/accounts', '/more'].includes(r) ? r : '/more';
+  const main = MAIN.includes(r) ? r : '/more';
   const scroll = soft ? window.scrollY : 0;
   const focus = document.activeElement && document.activeElement.id;
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
@@ -248,7 +248,7 @@ function render(soft) {
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
 function nav(on) {
-  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'Transactions'], ['/stats', 'chart', 'Stats'], ['/accounts', 'card', 'Accounts'], ['/more', 'user', 'Profile']];
+  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'Transactions'], ['/stats', 'chart', 'Stats'], ['/more', 'user', 'Profile']];
   const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
   return `<div class="nav"><div>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
 }
@@ -362,7 +362,7 @@ function pgAccounts() {
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/budget', 'target', 'Budget & limits'], ['/categories', 'grid', 'Categories'], ['/rate', 'rate', 'USD rate'], ['/settings', 'sliders', 'Settings, Telegram']];
+  const l = [['/accounts', 'card', 'Accounts'], ['/budget', 'target', 'Budget & limits'], ['/categories', 'grid', 'Categories'], ['/rate', 'rate', 'USD rate'], ['/settings', 'sliders', 'Settings, Telegram']];
   return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {

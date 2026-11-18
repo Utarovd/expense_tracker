@@ -150,3 +150,6 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 10px 12px;gap:4px}
 .empty svg{margin-bottom:8px}.empty b{font-size:16px}
 .day .pos{color:var(--grn);font-weight:600}.day .neg{color:var(--red);font-weight:600}
+.navadd{align-items:flex-end;padding:0 4px 4px}
+.navadd button{width:100%;max-width:66px;height:76px;margin-top:0;border-radius:20px;transform:translateY(0)}
+.navadd button:active{transform:scale(.94)}
