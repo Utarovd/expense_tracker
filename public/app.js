@@ -589,7 +589,7 @@ document.addEventListener('click', async (e) => {
       if (!r) return er.textContent = 'No connection to the server';
       if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Too many attempts, wait 15 minutes' : 'Wrong login or password';
       S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); break; }
-    case 'logout': if (!(await ask('Log out?', '', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
+    case 'logout': if (!(await ask('Log out?', 'You’ll need to sign in again on this device.', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
     case 'add': openTx(null); break;
     case 'slice': selSlice(id); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
