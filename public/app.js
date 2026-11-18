@@ -246,6 +246,7 @@ function ask(title, msg, okLabel = 'Delete') {
 // ---------- роутинг ----------
 const MAIN = ['/', '/transactions', '/stats', '/more'];
 let slideDir = '';
+const PAGES = () => ({ '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/accounts': pgAccounts, '/more': pgMore, '/budget': pgBudget, '/categories': pgCats, '/rate': pgRate, '/settings': pgSettings });
 function go(path, replace) { const a = MAIN.indexOf(S.route), b = MAIN.indexOf(path); slideDir = a > -1 && b > -1 ? (b > a ? 'pg-next' : 'pg-prev') : ''; if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
 window.addEventListener('popstate', () => { slideDir = ''; closeSheet(); S.route = location.pathname; render(); });
 let lastRoute = null;
@@ -253,8 +254,7 @@ function render(soft) {
   if (!S.user) { if (S.route !== '/login') { S.route = '/login'; history.replaceState({}, '', '/login'); } return renderLogin(); }
   if (S.route === '/login') { S.route = '/'; history.replaceState({}, '', '/'); }
   const r = S.route;
-  const pages = { '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/accounts': pgAccounts, '/more': pgMore, '/budget': pgBudget, '/categories': pgCats, '/rate': pgRate, '/settings': pgSettings };
-  const fn = pages[r] || pgHome;
+  const fn = PAGES()[r] || pgHome;
   const main = MAIN.includes(r) ? r : '/more';
   const scroll = soft ? window.scrollY : 0;
   const focus = document.activeElement && document.activeElement.id;
@@ -718,18 +718,39 @@ async function boot(fresh) {
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => 0);
 boot();
 
-// свайпы между разделами
+// свайпы между разделами: страница едет за пальцем, соседняя въезжает рядом
 (() => {
-  let x0 = 0, y0 = 0, t0 = 0, ok = false;
+  let st = null;
+  const W = () => Math.min(window.innerWidth, 560);
+  const cur = () => $app.firstElementChild;
+  function cleanup() { if (!st) return; if (st.nb) st.nb.remove(); const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; } st = null; }
   document.addEventListener('touchstart', (e) => {
-    const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
-    ok = e.touches.length === 1 && !ovEl && S.user && MAIN.includes(S.route) && !e.target.closest('input,select,textarea,.chips,.ov');
+    cleanup();
+    if (e.touches.length !== 1 || ovEl || !S.user || !MAIN.includes(S.route) || e.target.closest('input,select,textarea,.chips,.ov,.dwrap,[data-hdl],.trend')) return;
+    const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
   }, { passive: true });
-  document.addEventListener('touchend', (e) => {
-    if (!ok) return; ok = false;
-    const t = e.changedTouches[0]; const dx = t.clientX - x0, dy = t.clientY - y0;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - t0 > 700) return;
-    const i = MAIN.indexOf(S.route), j = i + (dx < 0 ? 1 : -1);
-    if (j >= 0 && j < MAIN.length) go(MAIN[j]);
-  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
+    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { st = null; return; } }
+    e.preventDefault();
+    const i = MAIN.indexOf(S.route); const j = i + (dx < 0 ? 1 : -1);
+    if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = j;
+      if (j >= 0 && j < MAIN.length) { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); document.body.appendChild(nb); st.nb = nb; } }
+    const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? dx * 0.25 : dx;
+    const c = cur(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${st.dx}px)`; }
+    if (st.nb) { st.nb.style.transition = 'none'; st.nb.style.transform = `translateX(${st.dx + (dx < 0 ? W() : -W()) + (dx < 0 ? 16 : -16)}px)`; }
+  }, { passive: false });
+  function end() {
+    if (!st || st.lock !== 'x') { st = null; return; }
+    const s0 = st; const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const c = cur();
+    const done = s0.nb && (Math.abs(s0.dx) > W() * 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
+    const ease = 'transform .3s cubic-bezier(.2,.8,.2,1)'; const sign = s0.dx < 0 ? -1 : 1;
+    if (c) { c.style.transition = ease; c.style.transform = done ? `translateX(${sign * (W() + 16)}px)` : ''; }
+    if (s0.nb) { s0.nb.style.transition = ease; s0.nb.style.transform = done ? 'translateX(0)' : `translateX(${-sign * (W() + 16)}px)`; }
+    setTimeout(() => {
+      if (done) { haptic(); slideDir = ''; lastRoute = MAIN[s0.j]; history.pushState({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); }
+      if (s0.nb) s0.nb.remove(); if (st === s0) st = null;
+    }, 310);
+  }
+  document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', end, { passive: true });
 })();
