@@ -59,7 +59,7 @@ async function sync() {
   S.syncing = false; updateBadge();
 }
 function updateBadge() { const n = pendingCount(); S.pending = n; const b = document.getElementById('sbadge'); if (b) b.textContent = syncText(); }
-const syncText = () => !navigator.onLine ? '● оффлайн' + (pendingCount() ? ` · ждёт ${pendingCount()}` : '') : pendingCount() ? `○ отправка ${pendingCount()}` : '✓ синхронизировано';
+const syncText = () => !navigator.onLine ? '● offline' + (pendingCount() ? ` · ${pendingCount()} pending` : '') : pendingCount() ? `○ sending ${pendingCount()}` : '✓ synced';
 let lastStamp = null;
 async function poll() {
   if (!S.user || !navigator.onLine || document.hidden) return;
@@ -84,7 +84,7 @@ const monthKey = (ts) => { const d = new Date(ts + TZ); return d.getUTCFullYear(
 const curMonth = () => S.month || (S.month = monthKey(now()));
 const monthRange = (m) => { const [y, mo] = m.split('-').map(Number); return [Date.UTC(y, mo - 1, 1) - TZ, Date.UTC(y, mo, 1) - TZ]; };
 const shiftMonth = (m, d) => { const [y, mo] = m.split('-').map(Number); const x = new Date(Date.UTC(y, mo - 1 + d, 1)); return x.getUTCFullYear() + '-' + String(x.getUTCMonth() + 1).padStart(2, '0'); };
-const MN = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthName = (m) => MN[+m.split('-')[1] - 1] + ' ' + m.split('-')[0];
 function curRate() {
   const mode = setting('rate_mode', 'auto'); const man = parseFloat(setting('rate_manual', ''));
@@ -139,12 +139,12 @@ function parseQuick(text) {
   let n = num(m[1]); if (!(n > 0)) return null;
   if (m[2]) n *= /млн|mln/i.test(m[2]) ? 1e6 : 1e3;
   const usd = /\$|usd|доллар/i.test(t);
-  const kind = /нал/i.test(t) ? 'cash' : /visa|виз/i.test(t) ? 'card_visa' : /карт|card/i.test(t) ? 'card_uzs' : null;
-  const note = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\$|usd|доллар\w*|сум\w*|uzs|нал\w*|visa|виза|карт\w*|card/ig, ' ').replace(/\s+/g, ' ').trim();
+  const kind = /нал|cash/i.test(t) ? 'cash' : /visa|виз/i.test(t) ? 'card_visa' : /карт|card/i.test(t) ? 'card_uzs' : null;
+  const note = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\$|usd|доллар\w*|сум\w*|uzs|нал\w*|cash|visa|виза|карт\w*|card/ig, ' ').replace(/\s+/g, ' ').trim();
   return { income, usd, amount: Math.round(n * 100), kind, note };
 }
 function quickAdd(text) {
-  const q = parseQuick(text); if (!q) return toast('Не понял. Пример: «обед 58000»');
+  const q = parseQuick(text); if (!q) return toast('Didn’t get that. Example: “lunch 58000”');
   const accs = accounts();
   let acc = accs.find(a => a.type === q.kind) || (q.usd ? accs.find(a => a.type === 'card_visa') : accs.find(a => a.type === 'cash')) || accs[0];
   if (!acc) return;
@@ -153,7 +153,7 @@ function quickAdd(text) {
   if (q.note) { const same = rows('transactions').filter(t => (t.note || t.merchant || '').toLowerCase() === q.note.toLowerCase() && t.category_id).sort((a, b) => b.occurred_at - a.occurred_at)[0]; if (same) cat = same.category_id; }
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
-  toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · нажми, чтобы выбрать категорию'), cat ? null : () => openTx(tx.id));
+  toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
 }
 
 // ---------- UI-утилиты ----------
@@ -194,7 +194,7 @@ function render(soft) {
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
 function nav(on) {
-  const it = [['/', '🏠', 'Главная'], ['/transactions', '☰', 'Операции'], ['/stats', '📊', 'Статистика'], ['/accounts', '💳', 'Счета'], ['/more', '👤', 'Профиль']];
+  const it = [['/', '🏠', 'Home'], ['/transactions', '☰', 'Transactions'], ['/stats', '📊', 'Stats'], ['/accounts', '💳', 'Accounts'], ['/more', '👤', 'Profile']];
   return `<div class="nav"><div>${it.map(([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${i}</span>${n}</a>`).join('')}</div></div>`;
 }
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
@@ -202,10 +202,10 @@ const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${
 const srcIco = { sms: '📱', wallet: '', payme: '🧾', telegram: '✈️' };
 function txRow(t) {
   const acc = byId('accounts', t.account_id); const isT = t.type === 'transfer';
-  const title = isT ? 'Перевод' : (t.note || t.merchant || catPath(t.category_id) || 'Без названия');
-  const sub = isT ? (t.note || '') : (catPath(t.category_id) || 'без категории');
+  const title = isT ? 'Transfer' : (t.note || t.merchant || catPath(t.category_id) || 'Untitled');
+  const sub = isT ? (t.note || '') : (catPath(t.category_id) || 'no category');
   const sign = t.type === 'income' || (isT && t.amount > 0) ? '+' : '−'; const cls = sign === '+' ? 'pos' : 'neg';
-  const src = t.source === 'wallet' ? ' · Wallet' : t.source === 'sms' ? ' · СМС' : t.source === 'payme' ? ' · Payme' : t.source === 'telegram' ? ' · бот' : '';
+  const src = t.source === 'wallet' ? ' · Wallet' : t.source === 'sms' ? ' · SMS' : t.source === 'payme' ? ' · Payme' : t.source === 'telegram' ? ' · bot' : '';
   return `<div class="row" data-act="tx" data-id="${t.id}"><div class="ico">${isT ? '🔁' : catIcon(t.category_id)}</div><div class="grow"><b>${esc(title)}</b><span class="sub">${esc(sub)} · ${esc(acc ? acc.name : '?')} · ${hm(t.occurred_at)}${src}</span></div><div class="amt ${cls}">${sign}${fmt(Math.abs(t.amount), t.currency)}</div></div>`;
 }
 
@@ -216,12 +216,12 @@ function pgHome() {
   const recent = rows('transactions').filter(t => t.space_id === S.space).sort((a, b) => b.occurred_at - a.occurred_at).slice(0, 8);
   const [, e] = monthRange(m); const daysLeft = Math.max(1, Math.ceil((e - now()) / 86400000));
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
-  return `<div class="top"><h1>Главная</h1>${spaceSwitch()}</div>
-  <div class="quick"><input id="qa" placeholder="Быстро: «обед 58000» или «такси 25к»" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
-  <div class="card"><div class="lbl">Баланс</div><div class="big">${fmt(tot, 'UZS')} сум</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} по курсу ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · обновлён ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
-  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Бюджет на месяц</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Осталось ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} дн.</div>` : `<div class="sub" style="margin-top:6px">Лимит не задан. Потрачено: ${fmt(sp.total, 'UZS')}. Нажми, чтобы задать.</div>`}</div>
-  <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${a.type === 'cash' ? '💵' : a.type === 'card_visa' ? '🌐' : '💳'}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">Нет счетов</div>'}</div>
-  <div class="card"><div class="lbl">Последние</div>${recent.map(txRow).join('') || '<div class="sub" style="padding:10px 0">Пока пусто</div>'}</div>`;
+  return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
+  <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
+  <div class="card"><div class="lbl">Balance</div><div class="big">${fmt(tot, 'UZS')} UZS</div><div class="sub">≈ $${(tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${Math.round(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
+  <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${a.type === 'cash' ? '💵' : a.type === 'card_visa' ? '🌐' : '💳'}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
+  <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || '<div class="sub" style="padding:10px 0">Nothing yet</div>'}</div>`;
 }
 function pgTrans() {
   const [a, b] = monthRange(curMonth()); const q = S.q.toLowerCase();
@@ -229,11 +229,11 @@ function pgTrans() {
     (!q || (t.note + ' ' + t.merchant + ' ' + catPath(t.category_id)).toLowerCase().includes(q))).sort((x, y) => y.occurred_at - x.occurred_at);
   const days = {}; list.forEach(t => { const k = dd(t.occurred_at); (days[k] = days[k] || []).push(t); });
   const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount_base, 0);
-  return `<div class="top"><h1>Операции</h1>${spaceSwitch()}</div>${mnav()}
-  <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Расходы</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Доходы</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
-  <input id="srch" class="f" style="background:var(--card)" placeholder="Поиск" value="${esc(S.q)}">
-  <div class="chips"><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">Все</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
-  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span><span>${fmt(days[k].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), 'UZS')}</span></div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || '<div class="sub" style="text-align:center;padding:30px">Нет операций</div>'}`;
+  return `<div class="top"><h1>Transactions</h1>${spaceSwitch()}</div>${mnav()}
+  <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
+  <input id="srch" class="f" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
+  <div class="chips"><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span><span>${fmt(days[k].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), 'UZS')}</span></div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || '<div class="sub" style="text-align:center;padding:30px">No transactions</div>'}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 function pgStats() {
@@ -241,60 +241,60 @@ function pgStats() {
   const conv = (v) => disp === 'USD' ? v / rate : v; const f = (v) => disp === 'USD' ? fmt(Math.round(conv(v)), 'USD') : fmt(v, 'UZS');
   const items = Object.entries(sp.out).map(([id, v]) => ({ id, v, c: byId('categories', id) })).sort((a, b) => b.v - a.v);
   let acc = 0; const R = 70, C = 2 * Math.PI * R;
-  const donut = sp.total ? `<svg viewBox="0 0 200 200" width="190" height="190" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const s = `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${PAL[i % PAL.length]}" stroke-width="36" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>` : '<div class="sub">Нет расходов</div>';
+  const donut = sp.total ? `<svg viewBox="0 0 200 200" width="190" height="190" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const s = `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${PAL[i % PAL.length]}" stroke-width="36" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>` : '<div class="sub">No expenses</div>';
   // столбцы по дням
   const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
   rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
   const mx = Math.max(1, ...days); const bw = 300 / nd;
   const bars = `<svg viewBox="0 0 300 100" width="100%" height="110" preserveAspectRatio="none">${days.map((v, i) => `<rect x="${i * bw + 1}" y="${100 - v / mx * 96}" width="${bw - 2}" height="${v / mx * 96}" rx="2" fill="var(--pri)"/>`).join('')}</svg>`;
   const bud = budgetFor(null, m);
-  return `<div class="top"><h1>Статистика</h1>${spaceSwitch()}</div>${mnav()}
+  return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>${mnav()}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
-  <div class="card" style="text-align:center"><div class="lbl">Расходы за месяц</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">бюджет ${f(bud.limit_amount)} · факт ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div style="display:flex;justify-content:center;margin:12px 0">${donut}</div>
-  ${items.map((it, i) => `<div class="legend"><i style="background:${PAL[i % PAL.length]}"></i><span class="grow">${it.c ? esc((it.c.icon || '') + ' ' + it.c.name) : 'Без категории'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
-  <div class="card"><div class="lbl">По дням</div>${bars}</div>`;
+  <div class="card" style="text-align:center"><div class="lbl">Spent this month</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div style="display:flex;justify-content:center;margin:12px 0">${donut}</div>
+  ${items.map((it, i) => `<div class="legend"><i style="background:${PAL[i % PAL.length]}"></i><span class="grow">${it.c ? esc((it.c.icon || '') + ' ' + it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
+  <div class="card"><div class="lbl">By day</div>${bars}</div>`;
 }
 function pgAccounts() {
   const accs = accounts();
-  return `<div class="top"><h1>Счета</h1>${spaceSwitch()}</div>
-  <div class="card">${accs.map(a => `<div class="row" data-act="accedit" data-id="${a.id}"><div class="ico">${a.type === 'cash' ? '💵' : a.type === 'card_visa' ? '🌐' : '💳'}</div><div class="grow"><b>${esc(a.name)}${a.card_last4 ? ' ···' + esc(a.card_last4) : ''}</b><span class="sub">${a.currency}${a.hidden ? ' · скрыт' : ''}${a.exclude_from_total ? ' · вне итога' : ''}</span></div><div class="amt">${fmt(balance(a), a.currency)}</div></div>`).join('')}</div>
-  <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Счёт</button><button class="btn full" data-act="addtransfer">Перевод</button></div>`;
+  return `<div class="top"><h1>Accounts</h1>${spaceSwitch()}</div>
+  <div class="card">${accs.map(a => `<div class="row" data-act="accedit" data-id="${a.id}"><div class="ico">${a.type === 'cash' ? '💵' : a.type === 'card_visa' ? '🌐' : '💳'}</div><div class="grow"><b>${esc(a.name)}${a.card_last4 ? ' ···' + esc(a.card_last4) : ''}</b><span class="sub">${a.currency}${a.hidden ? ' · hidden' : ''}${a.exclude_from_total ? ' · excluded' : ''}</span></div><div class="amt">${fmt(balance(a), a.currency)}</div></div>`).join('')}</div>
+  <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/budget', '🎯', 'Бюджет и лимиты'], ['/categories', '🗂', 'Категории'], ['/rate', '💱', 'Курс доллара'], ['/settings', '⚙️', 'Настройки, Telegram']];
-  return `<div class="top"><h1>Профиль</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${i}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
+  const l = [['/budget', '🎯', 'Budget & limits'], ['/categories', '🗂', 'Categories'], ['/rate', '💱', 'USD rate'], ['/settings', '⚙️', 'Settings, Telegram']];
+  return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${i}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
   const m = curMonth(); const sp = spentByRoot(m); const tot = budgetFor(null, m);
   const roots = cats('expense').filter(c => !c.parent_id && !c.archived);
-  const line = (name, spent, b, cat) => { const lim = b ? b.limit_amount : 0; const pct = lim ? Math.min(100, Math.round(spent / lim * 100)) : 0; return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="grow">${name}</b><input class="f" style="width:130px;margin:0;text-align:right" inputmode="decimal" data-bud="${cat || ''}" placeholder="лимит" value="${lim ? Math.round(lim / 100) : ''}"></div><div class="bar"><i class="${lim && spent > lim ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">потрачено ${fmt(spent, 'UZS')}${lim ? ' · осталось ' + fmt(lim - spent, 'UZS') : ''}</div></div>`; };
-  return `<div class="top"><h1>Бюджет</h1>${spaceSwitch()}</div>${mnav()}<div class="card"><div class="lbl">Лимит меняется для этого и следующих месяцев</div>${line('Весь месяц', sp.total, tot, '')}${roots.map(c => line(esc((c.icon || '') + ' ' + c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
+  const line = (name, spent, b, cat) => { const lim = b ? b.limit_amount : 0; const pct = lim ? Math.min(100, Math.round(spent / lim * 100)) : 0; return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="grow">${name}</b><input class="f" style="width:130px;margin:0;text-align:right" inputmode="decimal" data-bud="${cat || ''}" placeholder="limit" value="${lim ? Math.round(lim / 100) : ''}"></div><div class="bar"><i class="${lim && spent > lim ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">spent ${fmt(spent, 'UZS')}${lim ? ' · left ' + fmt(lim - spent, 'UZS') : ''}</div></div>`; };
+  return `<div class="top"><h1>Budget</h1>${spaceSwitch()}</div>${mnav()}<div class="card"><div class="lbl">The limit applies to this and following months</div>${line('Whole month', sp.total, tot, '')}${roots.map(c => line(esc((c.icon || '') + ' ' + c.name), sp.out[c.id] || 0, budgetFor(c.id, m), c.id)).join('')}</div>`;
 }
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
-  return `<div class="top"><h1>Категории</h1>${spaceSwitch()}</div>${roots.map(r => `<div class="card"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${r.icon || '•'}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'доход' : 'расход'}</span></div><span class="sub">✎</span></div>${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div><span class="sub">✎</span></div>`).join('')}<div class="row" data-act="catnew" data-id="${r.id}" style="padding-left:56px;color:var(--pri)">+ подкатегория</div></div>`).join('')}<button class="btn sec full" data-act="catnew" data-id="">+ Категория</button>`;
+  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div>${roots.map(r => `<div class="card"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${r.icon || '•'}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div><span class="sub">✎</span></div>${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div><span class="sub">✎</span></div>`).join('')}<div class="row" data-act="catnew" data-id="${r.id}" style="padding-left:56px;color:var(--pri)">+ subcategory</div></div>`).join('')}<button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
 }
 function pgRate() {
   const mode = setting('rate_mode', 'auto'), kind = setting('rate_kind', 'buy'); const r = S.rates || {};
-  return `<div class="top"><h1>Курс USD</h1></div><div class="card">
-  <div class="row" style="cursor:default"><div class="grow"><b>Авто-курс (Ipak Yuli)</b><span class="sub">подтягивается с сайта банка</span></div><div class="sw ${mode === 'auto' ? 'on' : ''}" data-act="ratemode"></div></div>
-  <div class="lbl" style="margin-top:12px">Какой курс использовать</div><div class="seg" style="margin:6px 0 12px;width:max-content"><button class="${kind === 'buy' ? 'on' : ''}" data-act="ratekind" data-id="buy">Покупка банка</button><button class="${kind === 'sell' ? 'on' : ''}" data-act="ratekind" data-id="sell">Продажа банка</button></div>
-  <div class="sub">Покупка — дешевле (банк покупает у тебя доллары). Продажа — по ней ты сам покупаешь доллары.</div>
-  <div class="lbl" style="margin-top:14px">Ручной курс (сум за $1)</div><input class="f" id="ratem" inputmode="decimal" value="${esc(setting('rate_manual', ''))}" placeholder="например 12700"></div>
-  <div class="card"><div class="lbl">Сейчас на сайте</div><div style="margin-top:6px">Покупка: <b>${r.buy ? Math.round(r.buy) : '—'}</b> · Продажа: <b>${r.sell ? Math.round(r.sell) : '—'}</b> · ЦБ: <b>${r.cbu ? Math.round(r.cbu) : '—'}</b></div><div class="sub">Источник: ${r.source === 'ipakyuli' ? 'Ipak Yuli' : r.source === 'cbu' ? 'cbu.uz (запасной)' : '—'}${r.fetched_at ? ' · ' + dd(r.fetched_at) + ' ' + hm(r.fetched_at) : ''}</div><div style="margin-top:10px">Используется: <b>${Math.round(curRate())}</b></div><button class="btn sec" style="margin-top:12px" data-act="raterefresh">Обновить</button></div>`;
+  return `<div class="top"><h1>USD rate</h1></div><div class="card">
+  <div class="row" style="cursor:default"><div class="grow"><b>Auto rate (Ipak Yuli)</b><span class="sub">fetched from the bank’s website</span></div><div class="sw ${mode === 'auto' ? 'on' : ''}" data-act="ratemode"></div></div>
+  <div class="lbl" style="margin-top:12px">Which rate to use</div><div class="seg" style="margin:6px 0 12px;width:max-content"><button class="${kind === 'buy' ? 'on' : ''}" data-act="ratekind" data-id="buy">Bank buys</button><button class="${kind === 'sell' ? 'on' : ''}" data-act="ratekind" data-id="sell">Bank sells</button></div>
+  <div class="sub">Buy is lower (the bank buys dollars from you). Sell is what you pay to buy dollars.</div>
+  <div class="lbl" style="margin-top:14px">Manual rate (UZS per $1)</div><input class="f" id="ratem" inputmode="decimal" value="${esc(setting('rate_manual', ''))}" placeholder="e.g. 12700"></div>
+  <div class="card"><div class="lbl">Now on the website</div><div style="margin-top:6px">Buy: <b>${r.buy ? Math.round(r.buy) : '—'}</b> · Sell: <b>${r.sell ? Math.round(r.sell) : '—'}</b> · CBU: <b>${r.cbu ? Math.round(r.cbu) : '—'}</b></div><div class="sub">Source: ${r.source === 'ipakyuli' ? 'Ipak Yuli' : r.source === 'cbu' ? 'cbu.uz (fallback)' : '—'}${r.fetched_at ? ' · ' + dd(r.fetched_at) + ' ' + hm(r.fetched_at) : ''}</div><div style="margin-top:10px">In use: <b>${Math.round(curRate())}</b></div><button class="btn sec" style="margin-top:12px" data-act="raterefresh">Refresh</button></div>`;
 }
 function pgSettings() {
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto'; const me = S.me || {};
-  return `<div class="top"><h1>Настройки</h1></div>
-  <div class="card"><div class="lbl">Тема</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
-  <div class="card"><b>Telegram-бот</b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Привязано чатов: ${me.tg_linked}` : 'Ещё не привязан') : 'Токен бота не настроен на сервере'}</div>
-  <button class="btn sec" data-act="tgsetup">1. Подключить вебхук</button> <button class="btn" data-act="tgcode">2. Получить код</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
-  <div class="card"><b>Адрес для «Быстрых команд» (СМС и Wallet)</b><div class="sub" style="margin:4px 0 8px">Секретный. Никому не показывай.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Скопировать</button></div>` : '<div class="sub">Не задан (секрет WEBHOOK_SECRET)</div>'}</div>
-  <div class="card"><b>Данные</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Синхронизировать</button> <button class="btn sec" data-act="csv">Экспорт CSV</button></div>
-  <button class="btn red full" data-act="logout">Выйти</button><div class="stat">${esc(me.login || '')}</div>`;
+  return `<div class="top"><h1>Settings</h1></div>
+  <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
+  <div class="card"><b>Telegram bot</b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}</div>
+  <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
+  <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div>` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
+  <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
+  <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
 }
 function renderLogin() {
-  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Бюджет</h1><div class="sub" style="margin-bottom:20px">Вход</div><input class="f" style="background:var(--card)" id="lg" placeholder="Логин" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Пароль" autocomplete="current-password"><div class="err" id="lgerr"></div><button class="btn full" data-act="login">Войти</button></div>`;
+  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div><button class="btn full" data-act="login">Sign in</button></div>`;
 }
 
 // ---------- окна ----------
@@ -316,30 +316,30 @@ function drawTx() {
   const catOpts = cats(kind).filter(c => !c.parent_id && !c.archived).map(p => `<optgroup label="${esc((p.icon || '') + ' ' + p.name)}"><option value="${p.id}" ${F.category === p.id ? 'selected' : ''}>${esc(p.name)}</option>${cats(kind).filter(c => c.parent_id === p.id && !c.archived).map(c => `<option value="${c.id}" ${F.category === c.id ? 'selected' : ''}>${esc(p.name)} › ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
   const fa = isT ? byId('accounts', F.from) : byId('accounts', F.account), ta = isT ? byId('accounts', F.to) : null;
   const cross = isT && fa && ta && fa.currency !== ta.currency;
-  openSheet(`<h2>${F.id ? 'Изменить' : 'Новая операция'}</h2>
-  <div class="seg" style="margin-bottom:10px">${[['expense', 'Расход'], ['income', 'Доход'], ['transfer', 'Перевод']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
+  openSheet(`<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
+  <div class="seg" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
   <input class="f amtin" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(F.amount)}" data-f="amount" ${''}>
-  ${isT ? `<div class="lbl">Откуда</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">Куда</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Сумма на счёт зачисления (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(F.amount2)}" placeholder="сколько пришло">` : ''}`
-      : `<div class="lbl">Счёт</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Категория</div><select class="f" data-f="category"><option value="">Без категории</option>${catOpts}</select>`}
-  <div class="lbl">Заметка</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="Что это было">
-  <div class="lbl">Дата и время</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
-  ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Курс: ${Math.round(curRate())} (из настроек)</div>` : ''}
-  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Удалить</button>' : ''}<button class="btn full" data-act="txsave">Сохранить</button></div>`);
+  ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(F.amount2)}" placeholder="amount received">` : ''}`
+      : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div><select class="f" data-f="category"><option value="">No category</option>${catOpts}</select>`}
+  <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
+  <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
+  ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${Math.round(curRate())} (from settings)</div>` : ''}
+  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full" data-act="txsave">Save</button></div>`);
   const am = document.getElementById('f-amount'); if (am && !F.id && !F.amount) setTimeout(() => am.focus(), 320);
 }
 function saveTx() {
-  const amt = num(F.amount); if (!(amt > 0)) return toast('Введи сумму');
+  const amt = num(F.amount); if (!(amt > 0)) return toast('Enter an amount');
   const minor = Math.round(amt * 100); const ts = fromLocal(F.date);
   if (F.type === 'transfer') {
-    const fa = byId('accounts', F.from), ta = byId('accounts', F.to); if (!fa || !ta || fa.id === ta.id) return toast('Выбери два разных счёта');
-    let minor2 = minor; if (fa.currency !== ta.currency) { const a2 = num(F.amount2); if (!(a2 > 0)) return toast('Введи сумму зачисления'); minor2 = Math.round(a2 * 100); }
+    const fa = byId('accounts', F.from), ta = byId('accounts', F.to); if (!fa || !ta || fa.id === ta.id) return toast('Pick two different accounts');
+    let minor2 = minor; if (fa.currency !== ta.currency) { const a2 = num(F.amount2); if (!(a2 > 0)) return toast('Enter the amount received'); minor2 = Math.round(a2 * 100); }
     const g = F.group || rid(); const old = F.legs || [];
     const base = fa.currency === 'UZS' ? minor : minor2; const usd = fa.currency === 'USD' ? minor : ta.currency === 'USD' ? minor2 : 0; const fx = usd ? base / usd : 1;
     const mk = (prev, acc, amount) => ({ ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, type: 'transfer', account_id: acc.id, amount, currency: acc.currency, fx_rate: fx, amount_base: acc.currency === 'USD' ? Math.round(amount * fx) : amount, category_id: null, note: F.note, merchant: '', occurred_at: ts, transfer_group_id: g, source: (prev && prev.source) || 'app' });
     const o = old.find(x => x.amount < 0), i = old.find(x => x.amount > 0);
     put('transactions', mk(o, fa, -minor)); put('transactions', mk(i, ta, minor2));
   } else {
-    const acc = byId('accounts', F.account); if (!acc) return toast('Выбери счёт');
+    const acc = byId('accounts', F.account); if (!acc) return toast('Pick an account');
     const prev = F.id ? byId('transactions', F.id) : null;
     const tx = prev ? { ...prev } : makeTx({ type: F.type, account: acc, amount: minor });
     const usd = acc.currency === 'USD'; const fx = prev && prev.account_id === acc.id && prev.fx_rate ? prev.fx_rate : (usd ? curRate() : 1);
@@ -347,25 +347,25 @@ function saveTx() {
     put('transactions', tx);
     if (tx.merchant && tx.category_id) { /* память мерчант→категория ведёт бот; здесь не трогаем */ }
   }
-  closeSheet(); toast('Сохранено');
+  closeSheet(); toast('Saved');
 }
 function deleteTx() {
   if (F.type === 'transfer') (F.legs || []).forEach(l => del('transactions', l.id)); else del('transactions', F.id);
-  closeSheet(); toast('Удалено');
+  closeSheet(); toast('Deleted');
 }
 function openAcc(id) {
   const a = id ? byId('accounts', id) : { type: 'card_uzs', currency: 'UZS', name: '', card_last4: '', opening_balance: 0, hidden: 0, exclude_from_total: 0 };
   F = { acc: id, ...a, opening: String((a.opening_balance || 0) / 100) };
-  openSheet(`<h2>${id ? 'Счёт' : 'Новый счёт'}</h2><div class="lbl">Название</div><input class="f" data-f="name" value="${esc(a.name)}">
-  <div class="lbl">Тип</div><select class="f" data-f="type" ${id ? 'disabled' : ''}><option value="cash" ${a.type === 'cash' ? 'selected' : ''}>Наличные</option><option value="card_uzs" ${a.type === 'card_uzs' ? 'selected' : ''}>Карта UZS</option><option value="card_visa" ${a.type === 'card_visa' ? 'selected' : ''}>Visa / USD</option></select>
-  <div class="lbl">Последние 4 цифры карты (для авто-импорта)</div><input class="f" data-f="card_last4" maxlength="4" inputmode="numeric" value="${esc(a.card_last4)}">
-  <div class="lbl">Начальный остаток</div><input class="f" data-f="opening" inputmode="decimal" value="${esc(F.opening)}">
-  <div class="row" style="cursor:default"><div class="grow">Скрыть</div><div class="sw ${a.hidden ? 'on' : ''}" data-act="fflag" data-id="hidden"></div></div>
-  <div class="row" style="cursor:default"><div class="grow">Не учитывать в итоге</div><div class="sw ${a.exclude_from_total ? 'on' : ''}" data-act="fflag" data-id="exclude_from_total"></div></div>
-  <div style="display:flex;gap:10px;margin-top:14px">${id ? '<button class="btn red" data-act="accdel">Удалить</button>' : ''}<button class="btn full" data-act="accsave">Сохранить</button></div>`);
+  openSheet(`<h2>${id ? 'Account' : 'New account'}</h2><div class="lbl">Name</div><input class="f" data-f="name" value="${esc(a.name)}">
+  <div class="lbl">Type</div><select class="f" data-f="type" ${id ? 'disabled' : ''}><option value="cash" ${a.type === 'cash' ? 'selected' : ''}>Cash</option><option value="card_uzs" ${a.type === 'card_uzs' ? 'selected' : ''}>UZS card</option><option value="card_visa" ${a.type === 'card_visa' ? 'selected' : ''}>Visa / USD</option></select>
+  <div class="lbl">Card last 4 digits (for auto-import)</div><input class="f" data-f="card_last4" maxlength="4" inputmode="numeric" value="${esc(a.card_last4)}">
+  <div class="lbl">Opening balance</div><input class="f" data-f="opening" inputmode="decimal" value="${esc(F.opening)}">
+  <div class="row" style="cursor:default"><div class="grow">Hide</div><div class="sw ${a.hidden ? 'on' : ''}" data-act="fflag" data-id="hidden"></div></div>
+  <div class="row" style="cursor:default"><div class="grow">Exclude from total</div><div class="sw ${a.exclude_from_total ? 'on' : ''}" data-act="fflag" data-id="exclude_from_total"></div></div>
+  <div style="display:flex;gap:10px;margin-top:14px">${id ? '<button class="btn red" data-act="accdel">Delete</button>' : ''}<button class="btn full" data-act="accsave">Save</button></div>`);
 }
 function saveAcc() {
-  if (!F.name.trim()) return toast('Введи название');
+  if (!F.name.trim()) return toast('Enter a name');
   const cur = F.type === 'card_visa' ? 'USD' : 'UZS'; const prev = F.acc ? byId('accounts', F.acc) : null;
   put('accounts', { ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, name: F.name.trim(), type: F.type, currency: prev ? prev.currency : cur, opening_balance: Math.round((num(F.opening) || 0) * 100), card_last4: F.card_last4 || '', sort: prev ? prev.sort : accounts().length, hidden: F.hidden ? 1 : 0, exclude_from_total: F.exclude_from_total ? 1 : 0 });
   closeSheet();
@@ -373,13 +373,13 @@ function saveAcc() {
 function openCat(id, parent) {
   const c = id ? byId('categories', id) : { name: '', icon: '', parent_id: parent || null, kind: parent ? (byId('categories', parent) || {}).kind : 'expense' };
   F = { cat: id, ...c };
-  openSheet(`<h2>${id ? 'Категория' : 'Новая категория'}</h2><div class="lbl">Название</div><input class="f" data-f="name" value="${esc(c.name)}">
-  ${c.parent_id ? '' : `<div class="lbl">Значок (эмодзи)</div><input class="f" data-f="icon" value="${esc(c.icon)}"><div class="lbl">Тип</div><select class="f" data-f="kind" ${id ? 'disabled' : ''}><option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>Расход</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>Доход</option></select>`}
-  <div style="display:flex;gap:8px;margin:6px 0 14px">${id ? '<button class="btn sec" data-act="catup">↑</button><button class="btn sec" data-act="catdown">↓</button><button class="btn sec" data-act="catarch">В архив</button>' : ''}</div>
-  <button class="btn full" data-act="catsave">Сохранить</button>`);
+  openSheet(`<h2>${id ? 'Category' : 'New category'}</h2><div class="lbl">Name</div><input class="f" data-f="name" value="${esc(c.name)}">
+  ${c.parent_id ? '' : `<div class="lbl">Icon (emoji)</div><input class="f" data-f="icon" value="${esc(c.icon)}"><div class="lbl">Type</div><select class="f" data-f="kind" ${id ? 'disabled' : ''}><option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>Expense</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>Income</option></select>`}
+  <div style="display:flex;gap:8px;margin:6px 0 14px">${id ? '<button class="btn sec" data-act="catup">↑</button><button class="btn sec" data-act="catdown">↓</button><button class="btn sec" data-act="catarch">Archive</button>' : ''}</div>
+  <button class="btn full" data-act="catsave">Save</button>`);
 }
 function saveCat() {
-  if (!F.name.trim()) return toast('Введи название');
+  if (!F.name.trim()) return toast('Enter a name');
   const prev = F.cat ? byId('categories', F.cat) : null;
   const sibs = cats().filter(x => (x.parent_id || null) === (F.parent_id || null));
   put('categories', { ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, parent_id: F.parent_id || null, name: F.name.trim(), kind: F.kind || 'expense', sort: prev ? prev.sort : sibs.length + 1, icon: F.icon || '', archived: prev ? prev.archived || 0 : 0 });
@@ -399,8 +399,8 @@ document.addEventListener('click', async (e) => {
   switch (act) {
     case 'login': { const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ login: document.getElementById('lg').value.trim(), password: document.getElementById('pw').value }) }).catch(() => null);
       const er = document.getElementById('lgerr');
-      if (!r) return er.textContent = 'Нет связи с сервером';
-      if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Слишком много попыток, подожди 15 минут' : 'Неверный логин или пароль';
+      if (!r) return er.textContent = 'No connection to the server';
+      if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Too many attempts, wait 15 minutes' : 'Wrong login or password';
       S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); break; }
     case 'logout': await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
     case 'add': openTx(null); break;
@@ -429,12 +429,12 @@ document.addEventListener('click', async (e) => {
     case 'catdown': moveCat(1); break;
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
-    case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Курс обновлён'); } else toast('Не удалось обновить'); break; }
+    case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
     case 'theme': tryLS(() => localStorage.setItem('theme', id)); applyTheme(); render(true); break;
-    case 'syncnow': await sync(); toast('Готово'); break;
-    case 'copyhook': tryLS(() => navigator.clipboard.writeText(S.me.hook_url)); toast('Скопировано'); break;
-    case 'tgsetup': { const r = await api('/api/tg/setup', { method: 'POST' }).catch(() => null); document.getElementById('tgout').textContent = r && r.data.ok ? 'Вебхук подключён: @' + r.data.bot : 'Ошибка: ' + (r ? (r.data.desc || r.data.error) : 'нет связи'); break; }
-    case 'tgcode': { const r = await api('/api/tg/code', { method: 'POST' }).catch(() => null); document.getElementById('tgout').innerHTML = r && r.ok ? `Отправь боту этот код (10 минут): <b style="font-size:22px">${r.data.code}</b>` : 'Ошибка'; break; }
+    case 'syncnow': await sync(); toast('Done'); break;
+    case 'copyhook': tryLS(() => navigator.clipboard.writeText(S.me.hook_url)); toast('Copied'); break;
+    case 'tgsetup': { const r = await api('/api/tg/setup', { method: 'POST' }).catch(() => null); document.getElementById('tgout').textContent = r && r.data.ok ? 'Webhook connected: @' + r.data.bot : 'Error: ' + (r ? (r.data.desc || r.data.error) : 'no connection'); break; }
+    case 'tgcode': { const r = await api('/api/tg/code', { method: 'POST' }).catch(() => null); document.getElementById('tgout').innerHTML = r && r.ok ? `Send this code to the bot (10 minutes): <b style="font-size:22px">${r.data.code}</b>` : 'Error'; break; }
     case 'csv': exportCsv(); break;
   }
 });
@@ -453,7 +453,7 @@ function saveBudget(cat, val) {
   put('budgets', { ...(prev || {}), id: key, space_id: S.space, month: m, category_id: cat || null, limit_amount: Math.round(v * 100), currency: 'UZS', deleted_at: null });
 }
 function exportCsv() {
-  const L = ['Дата;Тип;Счёт;Сумма;Валюта;Категория;Заметка;Источник'];
+  const L = ['Date;Type;Account;Amount;Currency;Category;Note;Source'];
   rows('transactions').filter(t => t.space_id === S.space).sort((a, b) => a.occurred_at - b.occurred_at).forEach(t => L.push([dd(t.occurred_at) + ' ' + hm(t.occurred_at), t.type, (byId('accounts', t.account_id) || {}).name, t.amount / 100, t.currency, catPath(t.category_id), (t.note || t.merchant || '').replace(/;/g, ','), t.source].join(';')));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv' })); a.download = 'budget.csv'; a.click();
 }

@@ -166,14 +166,14 @@ const SEED_CATS = [
 async function seed(env) {
   const ts = now(); const st = [];
   const sp = { personal: rid(), family: rid() };
-  st.push(insertRow(env, 'spaces', { id: sp.personal, name: 'Личный', kind: 'personal', sort: 0, updated_at: ts }));
-  st.push(insertRow(env, 'spaces', { id: sp.family, name: 'Семейный', kind: 'family', sort: 1, updated_at: ts }));
+  st.push(insertRow(env, 'spaces', { id: sp.personal, name: 'Personal', kind: 'personal', sort: 0, updated_at: ts }));
+  st.push(insertRow(env, 'spaces', { id: sp.family, name: 'Family', kind: 'family', sort: 1, updated_at: ts }));
   const acc = (space, name, type, cur, last4, sort) => st.push(insertRow(env, 'accounts', { id: rid(), space_id: space, name, type, currency: cur, opening_balance: 0, card_last4: last4, sort, hidden: 0, exclude_from_total: 0, updated_at: ts }));
-  acc(sp.personal, 'Наличные', 'cash', 'UZS', '', 0);
-  acc(sp.personal, 'Карта UZS', 'card_uzs', 'UZS', '3153', 1);
+  acc(sp.personal, 'Cash', 'cash', 'UZS', '', 0);
+  acc(sp.personal, 'UZS card', 'card_uzs', 'UZS', '3153', 1);
   acc(sp.personal, 'Visa', 'card_visa', 'USD', '', 2);
-  acc(sp.family, 'Наличные', 'cash', 'UZS', '', 0);
-  acc(sp.family, 'Карта', 'card_uzs', 'UZS', '', 1);
+  acc(sp.family, 'Cash', 'cash', 'UZS', '', 0);
+  acc(sp.family, 'Card', 'card_uzs', 'UZS', '', 1);
   for (const space of [sp.personal, sp.family]) {
     SEED_CATS.forEach(([name, icon, subs], i) => {
       const pid = rid();
@@ -202,7 +202,7 @@ const norm = (s) => (s || '').toUpperCase().replace(/\s+/g, ' ').trim();
 const fmtMoney = (minor, cur) => {
   const v = minor / 100;
   if (cur === 'USD') return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return Math.round(v).toLocaleString('ru-RU').replace(/ /g, ' ') + ' сум';
+  return Math.round(v).toLocaleString('ru-RU').replace(/ /g, ' ') + ' UZS';
 };
 const fmtTs = (ts) => { const d = new Date(ts + TZ_OFFSET); const p = (n) => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}.${p(d.getUTCMonth() + 1)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`; };
 function parseNum(s) {
@@ -251,9 +251,9 @@ function parseSms(text) {
 async function ingest(env, ev) {
   // ev: {src:'sms'|'wallet'|'telegram', type, merchant, ts, amount(minor), currency, last4, card, balance, ext}
   const space = await personalSpace(env);
-  if (!space) return { text: 'Сначала создай пользователя (setup).' };
+  if (!space) return { text: 'Create the user first (setup).' };
   const acc = await pickAccount(env, space, ev);
-  if (!acc) return { text: 'Нет счетов.' };
+  if (!acc) return { text: 'No accounts.' };
   const ts = ev.ts || now();
   if (ev.ext) {
     const ex = await env.DB.prepare('SELECT id FROM transactions WHERE source=? AND external_id=?').bind(ev.src, ev.ext).first();
@@ -274,9 +274,9 @@ async function ingest(env, ev) {
     const visa = (await env.DB.prepare("SELECT * FROM accounts WHERE space_id=? AND type='card_visa' AND deleted_at IS NULL LIMIT 1").bind(space).first());
     const g = rid(); const sell = await effRate(env, 'sell');
     const usdMinor = Math.round(ev.amount / sell);
-    stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: 'transfer', account_id: acc.id, amount: -ev.amount, currency: 'UZS', fx_rate: 1, amount_base: -ev.amount, note: 'Обмен в IYB Mobile', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: ev.src, external_id: ev.ext || null }));
-    if (visa) stmts.push(insertRow(env, 'transactions', { id: rid(), space_id: space, type: 'transfer', account_id: visa.id, amount: usdMinor, currency: 'USD', fx_rate: sell, amount_base: ev.amount, note: 'Обмен в IYB Mobile (≈ по курсу)', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: 'sms_leg', external_id: null }));
-    notice = `🔁 Обмен: −${fmtMoney(ev.amount, 'UZS')} с «${acc.name}»` + (visa ? `\n≈ +${fmtMoney(usdMinor, 'USD')} на «${visa.name}» по курсу ${Math.round(sell)} (оценка, поправь в приложении по факту)` : '');
+    stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: 'transfer', account_id: acc.id, amount: -ev.amount, currency: 'UZS', fx_rate: 1, amount_base: -ev.amount, note: 'Exchange in IYB Mobile', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: ev.src, external_id: ev.ext || null }));
+    if (visa) stmts.push(insertRow(env, 'transactions', { id: rid(), space_id: space, type: 'transfer', account_id: visa.id, amount: usdMinor, currency: 'USD', fx_rate: sell, amount_base: ev.amount, note: 'Exchange in IYB Mobile (≈ at rate)', merchant: ev.merchant, occurred_at: ts, transfer_group_id: g, source: 'sms_leg', external_id: null }));
+    notice = `🔁 Exchange: −${fmtMoney(ev.amount, 'UZS')} from “${acc.name}”` + (visa ? `\n≈ +${fmtMoney(usdMinor, 'USD')} to “${visa.name}” at ${Math.round(sell)} (estimate, fix it in the app if needed)` : '');
     await env.DB.batch(stmts); await touch(env);
     return { text: notice + await qoldiq(env, space, acc, ev), txId, noCat: true };
   }
@@ -294,7 +294,7 @@ async function qoldiq(env, space, acc, ev) {
   if (ev.balance == null) return '';
   const b = (await balances(env, space)).find(x => x.id === acc.id);
   if (!b || b.bal === ev.balance) return '';
-  return `\n⚠ Остаток в приложении ${fmtMoney(b.bal, acc.currency)}, в банке ${fmtMoney(ev.balance, acc.currency)}`;
+  return `\n⚠ Balance in the app ${fmtMoney(b.bal, acc.currency)}, in the bank ${fmtMoney(ev.balance, acc.currency)}`;
 }
 
 // ---------- Telegram ----------
@@ -314,7 +314,7 @@ async function catKeyboard(env, space, kind, txId, parentId) {
     const p = results.find(c => c.id === parentId);
     const subs = results.filter(c => c.parent_id === parentId);
     for (let i = 0; i < subs.length; i += 2) rows.push(subs.slice(i, i + 2).map(c => ({ text: c.name, callback_data: 'c:' + txId + ':' + c.id })));
-    rows.push([{ text: `Просто «${p?.name}»`, callback_data: 'c:' + txId + ':' + parentId }, { text: '← Назад', callback_data: 'b:' + txId + ':' + (p?.kind || kind) }]);
+    rows.push([{ text: `Just “${p?.name}”`, callback_data: 'c:' + txId + ':' + parentId }, { text: '← Back', callback_data: 'b:' + txId + ':' + (p?.kind || kind) }]);
   }
   return { inline_keyboard: rows };
 }
@@ -323,9 +323,9 @@ async function notify(env, res) {
   let markup;
   if (res.txId && !res.noCat) {
     const space = res.space;
-    markup = res.mapped ? { inline_keyboard: [[{ text: '✏ Изменить категорию', callback_data: 'b:' + res.txId + ':' + res.kind }]] } : await catKeyboard(env, space, res.kind, res.txId, null);
+    markup = res.mapped ? { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + res.txId + ':' + res.kind }]] } : await catKeyboard(env, space, res.kind, res.txId, null);
   }
-  const text = res.txId && !res.noCat && !res.mapped ? res.text + '\n\nКуда отнести?' : res.text;
+  const text = res.txId && !res.noCat && !res.mapped ? res.text + '\n\nWhich category?' : res.text;
   for (const c of await chats(env)) await tg(env, 'sendMessage', { chat_id: c, text, reply_markup: markup });
 }
 async function tgSend(env, chat, text, extra) { return tg(env, 'sendMessage', { chat_id: chat, text, ...extra }); }
@@ -339,8 +339,8 @@ function parseQuick(text) {
   let n = parseNum(m[1].replace(/ /g, ''));
   if (isNaN(n) || n <= 0) return null;
   if (m[2]) n *= /млн|mln/i.test(m[2]) ? 1e6 : 1e3;
-  const kind = /нал/i.test(t) ? 'cash' : /visa|виз/i.test(t) ? 'visa' : /карт|card/i.test(t) ? 'card' : null;
-  let note = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\$|usd|доллар\w*|сум\w*|uzs|нал\w*|visa|виза|карт\w*|card/ig, ' ').replace(/\s+/g, ' ').trim();
+  const kind = /нал|cash/i.test(t) ? 'cash' : /visa|виз/i.test(t) ? 'visa' : /карт|card/i.test(t) ? 'card' : null;
+  let note = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\$|usd|доллар\w*|сум\w*|uzs|нал\w*|cash|visa|виза|карт\w*|card/ig, ' ').replace(/\s+/g, ' ').trim();
   return { income, cur, amount: toMinor(n), note, kind };
 }
 async function aiReadScreenshot(env, bytes, mime) {
@@ -369,19 +369,19 @@ async function tgHandle(env, update) {
     if (code && saved && saved.code === code && saved.exp > now()) {
       await env.DB.prepare('INSERT OR REPLACE INTO telegram_links(chat_id,user_id,username,linked_at) VALUES(?,?,?,?)').bind(chat, saved.user_id, msg.from?.username || '', now()).run();
       await setMeta(env, 'tglink', 'null');
-      return tgSend(env, chat, '✅ Привязано. Пиши расходы так: «netflix 15$» или «обед 58000». Скрин оплаты Visa просто пришли фото. /balance, /budget, /help');
+      return tgSend(env, chat, '✅ Linked. Send expenses like “netflix 15$” or “lunch 58000”. For a Payme payment, just send the screenshot. /balance, /budget, /help');
     }
-    return tgSend(env, chat, 'Привяжи бота: в приложении Ещё → Настройки → Telegram возьми одноразовый код и пришли его сюда.');
+    return tgSend(env, chat, 'Link the bot: in the app go to Profile → Settings → Telegram, get a one-time code and send it here.');
   }
   const space = await personalSpace(env);
-  if (/^\/(help|start)/.test(text)) return tgSend(env, chat, 'Текст: «такси 25000», «netflix 15$», «+500000 зарплата» (плюс = доход), можно добавить «нал» / «карта» / «visa».\nФото скрина оплаты Visa: распознаю и запишу.\n/balance: остатки. /budget: бюджет месяца.');
+  if (/^\/(help|start)/.test(text)) return tgSend(env, chat, 'Text: “taxi 25000”, “netflix 15$”, “+500000 salary” (plus = income), you can add “cash” / “card” / “visa”.\nPayme payment screenshot: I’ll read it and record it.\n/balance: balances. /budget: monthly budget.');
   if (/^\/balance/.test(text)) {
     const b = await balances(env, space);
-    return tgSend(env, chat, b.filter(x => !x.hidden).map(x => `${x.name}: ${fmtMoney(x.bal, x.currency)}`).join('\n') || 'Нет счетов');
+    return tgSend(env, chat, b.filter(x => !x.hidden).map(x => `${x.name}: ${fmtMoney(x.bal, x.currency)}`).join('\n') || 'No accounts');
   }
   if (/^\/budget/.test(text)) return tgSend(env, chat, await budgetText(env, space));
   if (msg.photo?.length) {
-    if (!env.AI) return tgSend(env, chat, 'Распознавание не настроено (нет AI).');
+    if (!env.AI) return tgSend(env, chat, 'Recognition is not set up (no AI).');
     try {
       const p = msg.photo[msg.photo.length - 1];
       const f = await tg(env, 'getFile', { file_id: p.file_id });
@@ -389,17 +389,17 @@ async function tgHandle(env, update) {
       const bytes = new Uint8Array(await img.arrayBuffer());
       const r = await aiReadScreenshot(env, bytes, 'image/jpeg');
       const amt = parseNum(r?.amount);
-      if (!r || !(amt > 0)) return tgSend(env, chat, 'Не смог прочитать сумму на скрине. Напиши текстом, например «магазин 15$».');
+      if (!r || !(amt > 0)) return tgSend(env, chat, 'Couldn’t read the amount on the screenshot. Type it instead, e.g. “shop 15$”.');
       const dt = String(r.datetime || '').match(/(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)/);
       const ts = dt ? Date.UTC(+dt[1], +dt[2] - 1, +dt[3], +dt[4], +dt[5]) - TZ_OFFSET : now();
       const res = await ingest(env, { src: 'payme', type: 'expense', merchant: r.merchant || '', ts, amount: toMinor(amt), currency: 'UZS', card: '', ext: 'tgphoto:' + p.file_unique_id });
-      if (res.dup) return tgSend(env, chat, 'Такая операция уже записана.');
-      res.text = '🖼 Прочитал со скрина Payme (проверь сумму):\n' + res.text;
+      if (res.dup) return tgSend(env, chat, 'This transaction is already recorded.');
+      res.text = '🖼 Read from the Payme screenshot (check the amount):\n' + res.text;
       return notify(env, res);
-    } catch (e) { return tgSend(env, chat, 'Ошибка распознавания: ' + String(e).slice(0, 200)); }
+    } catch (e) { return tgSend(env, chat, 'Recognition error: ' + String(e).slice(0, 200)); }
   }
   const q = parseQuick(text);
-  if (!q) return tgSend(env, chat, 'Не понял. Пример: «такси 25000» или «netflix 15$». /help');
+  if (!q) return tgSend(env, chat, 'Didn’t get that. Example: “taxi 25000” or “netflix 15$”. /help');
   const accounts = (await env.DB.prepare('SELECT * FROM accounts WHERE space_id=? AND deleted_at IS NULL ORDER BY sort').bind(space).all()).results;
   let acc = q.kind === 'cash' ? accounts.find(a => a.type === 'cash') : q.kind === 'visa' ? accounts.find(a => a.type === 'card_visa') : q.kind === 'card' ? accounts.find(a => a.type === 'card_uzs') : null;
   if (!acc) acc = q.cur === 'USD' ? accounts.find(a => a.type === 'card_visa') : accounts.find(a => a.type === 'cash');
@@ -426,8 +426,8 @@ async function tgCallback(env, cq) {
     await env.DB.prepare('UPDATE transactions SET category_id=?, updated_at=?, synced_at=? WHERE id=?').bind(id, t, t, txId).run();
     if (tx.merchant) await env.DB.prepare('INSERT INTO merchant_map(merchant,category_id,updated_at) VALUES(?,?,?) ON CONFLICT(merchant) DO UPDATE SET category_id=excluded.category_id, updated_at=excluded.updated_at').bind(norm(tx.merchant), id, t).run();
     await touch(env);
-    const base = (cq.message.text || '').replace(/\n\nКуда отнести\?$/, '').replace(/\n📂 .*/, '');
-    return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: base + `\n📂 ${(c.pn ? c.pn + ' › ' : '') + c.name} ✓`, reply_markup: { inline_keyboard: [[{ text: '✏ Изменить категорию', callback_data: 'b:' + txId + ':' + (tx.type === 'income' ? 'income' : 'expense') }]] } });
+    const base = (cq.message.text || '').replace(/\n\n(Куда отнести|Which category)\?$/, '').replace(/\n📂 .*/, '');
+    return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: base + `\n📂 ${(c.pn ? c.pn + ' › ' : '') + c.name} ✓`, reply_markup: { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + txId + ':' + (tx.type === 'income' ? 'income' : 'expense') }]] } });
   }
 }
 async function budgetText(env, space) {
@@ -435,8 +435,8 @@ async function budgetText(env, space) {
   const b = await env.DB.prepare("SELECT limit_amount FROM budgets WHERE space_id=? AND category_id IS NULL AND month<=? AND deleted_at IS NULL ORDER BY month DESC LIMIT 1").bind(space, month).first();
   const from = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - TZ_OFFSET;
   const s = await env.DB.prepare("SELECT COALESCE(SUM(amount_base),0) AS s FROM transactions WHERE space_id=? AND type='expense' AND deleted_at IS NULL AND occurred_at>=?").bind(space, from).first();
-  if (!b) return `Потрачено за месяц: ${fmtMoney(s.s, 'UZS')}. Лимит не задан (приложение → Бюджет).`;
-  return `Бюджет: ${fmtMoney(s.s, 'UZS')} из ${fmtMoney(b.limit_amount, 'UZS')}\nОсталось: ${fmtMoney(b.limit_amount - s.s, 'UZS')}`;
+  if (!b) return `Spent this month: ${fmtMoney(s.s, 'UZS')}. No limit set (app → Budget).`;
+  return `Budget: ${fmtMoney(s.s, 'UZS')} of ${fmtMoney(b.limit_amount, 'UZS')}\nLeft: ${fmtMoney(b.limit_amount - s.s, 'UZS')}`;
 }
 
 // ---------- вебхук банка / Wallet ----------
@@ -461,7 +461,7 @@ async function webhook(req, env) {
   } else if (sms) {
     const p = parseSms(sms);
     if (p) res = await ingest(env, { src: 'sms', ...p });
-    else { res = { text: '⚠ Не смог разобрать СМС:\n' + String(sms).slice(0, 300) }; }
+    else { res = { text: '⚠ Couldn’t parse the SMS:\n' + String(sms).slice(0, 300) }; }
   } else res = { text: '' };
   await env.DB.prepare('INSERT INTO import_log(source,raw,result,at) VALUES(?,?,?,?)').bind(obj?.amount !== undefined ? 'wallet' : 'sms', raw.slice(0, 1000), (res.dup ? res.text : res.text || '').slice(0, 300), now()).run();
   if (res.text && !res.dup) await notify(env, res);
