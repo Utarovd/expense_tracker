@@ -656,7 +656,12 @@ document.addEventListener('click', async (e) => {
     case 'tx': openTx(id); break;
     case 'acc': go('/transactions'); S.accF = id; render(); break;
     case 'addtransfer': openTx(null, 'transfer'); break;
-    case 'ftype': F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx(); break;
+    case 'ftype': { const was = F.type; if (was === id) break;
+      if (id === 'transfer' && was !== 'transfer') { if (F.account) F.from = F.account; if (F.to === F.from) F.to = ''; }
+      else if (was === 'transfer' && id !== 'transfer' && F.from) F.account = F.from;
+      F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx();
+      if (!F.id) { const am = document.getElementById('f-amount'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
+      break; }
     case 'txsave': saveTx(); break;
     case 'txdel': if (await ask(F.type === 'transfer' ? 'Delete this transfer?' : 'Delete this transaction?', 'This can’t be undone.')) deleteTx(); break;
     case 'accedit': openAcc(id); break;
