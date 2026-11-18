@@ -248,7 +248,7 @@ function parseHumoSms(t) {
   return { type, kind, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${yy}${mm}${dd}${HH}${MM}:${amt}:${bal || ''}` };
 }
 function parseSms(text) {
-  const t = String(text).replace(/\s+/g, ' ').trim();
+  const t = String(text).replace(/[\u2018\u2019\u02bb\u02bc\u02b9`´]/g, "'").replace(/\s+/g, ' ').trim();
   if (/^(HUMO|UZCARD)/i.test(t)) return parseHumoSms(t);
   const m = t.match(/^(.+?):\s*(.+?)(?:,\s*[A-Z]{2},)?\s*(\d\d)\.(\d\d)\.(\d\d)\s+(\d\d):(\d\d)\s*,?\s*karta\s*\*+(\d{4})\.?\s*Miqdor:\s*([\d.,]+)\s*([A-Z]{3})[.,]?\s*(?:Qoldiq:\s*([\d.,]+))?/i);
   if (!m) return null;
