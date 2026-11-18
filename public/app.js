@@ -751,6 +751,7 @@ async function boot(fresh) {
     } catch (e) { /* без сети остаёмся на кэше; 401 обработан в api() */ }
   }
 }
+window.addEventListener('scroll', () => { const sb = document.querySelector('.sbar'); if (sb) sb.classList.toggle('on', window.scrollY > 6); }, { passive: true });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => 0);
 boot();
 
