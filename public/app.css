@@ -212,3 +212,21 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 /* интерактивный свайп */
 .swnb{position:fixed;top:0;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;padding:env(safe-area-inset-top) 16px 0;background:var(--bg);overflow:hidden;z-index:15;pointer-events:none;will-change:transform}
 #app>div:first-child{will-change:transform}
+
+.icpick{display:flex;gap:14px;margin-top:10px}
+.icpick button{border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--mut);font-size:12px;cursor:pointer}
+.icpick img{width:64px;height:64px;border-radius:15px;box-shadow:0 4px 12px rgba(0,0,0,.2);transition:transform .2s ease,box-shadow .2s ease}
+.icpick button.on img{box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--pri);transform:scale(1.04)}
+.icpick button.on{color:var(--tx);font-weight:600}
+/* «+» по центру панели, выступает поровну сверху и снизу */
+.navadd{align-self:end;height:56px;align-items:center;padding:0;overflow:visible}
+.navadd button{width:76px;height:76px;border-radius:38px;margin:0}
+.nav{overflow:visible}
+
+/* единая плашка выбранной вкладки */
+.nav>div{position:relative}
+.navpill{position:absolute;left:0;top:0;border-radius:16px;background:var(--grad);box-shadow:0 6px 16px rgba(19,38,82,.3);opacity:0;pointer-events:none;z-index:0}
+:root[data-nav=glass] .navpill{border-radius:22px}
+.nav a::before{display:none}
+.nav a{z-index:1}
+.nav a.on{color:#fff}

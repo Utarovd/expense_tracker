@@ -262,14 +262,28 @@ function render(soft) {
   if (keep) return; // не перерисовываем поверх вводимого текста
   $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
+  placePill();
   animateBalance();
   if (soft) window.scrollTo(0, scroll);
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
+// плашка выбранной вкладки: одна на всё меню, плавно едет между вкладками и за свайпом
+const tabBox = (path) => { const a = document.querySelector(`.nav a[data-go="${path}"]`); return a ? { x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight } : null; };
+function setPill(b, anim) {
+  const el = document.querySelector('.navpill'); if (!el || !b) return;
+  el.style.transition = anim ? 'transform .3s cubic-bezier(.2,.8,.2,1),width .3s ease' : 'none';
+  el.style.width = b.w + 'px'; el.style.height = b.h + 'px'; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
+}
+const onTab = (path) => document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.go === path));
+function placePill() {
+  const main = MAIN.includes(S.route) ? S.route : '/more'; const b = tabBox(main); if (!b) return;
+  if (S.pill && (S.pill.x !== b.x)) { setPill(S.pill, false); requestAnimationFrame(() => requestAnimationFrame(() => setPill(b, true))); } else setPill(b, false);
+  S.pill = b;
+}
 function nav(on) {
   const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'Transactions'], ['/stats', 'chart', 'Stats'], ['/more', 'user', 'Profile']];
   const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
-  return `<div class="nav"><div>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
+  return `<div class="nav"><div><i class="navpill"></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
 }
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
 const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${monthName(curMonth())}</b><button data-act="mnext">›</button></div>`;
@@ -487,6 +501,7 @@ function pgSettings() {
   return `<div class="top"><h1>Settings</h1></div>
   <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
   <div class="card"><div class="lbl">Menu style</div><div class="seg" style="margin-top:8px;width:max-content">${[['glass', 'Liquid Glass'], ['solid', 'Solid']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('navstyle')) || 'glass') === k ? 'on' : ''}" data-act="navstyle" data-id="${k}">${n}</button>`).join('')}</div></div>
+  <div class="card"><div class="lbl">App icon</div><div class="icpick">${[['a', 'Wallet'], ['b', 'Donut'], ['c', 'Growth']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('appicon')) || 'a') === k ? 'on' : ''}" data-act="appicon" data-id="${k}"><img src="/icon-${k}-180.png" alt=""><span>${n}</span></button>`).join('')}</div><div class="sub" style="margin-top:10px">On iPhone the icon is saved when the app is added. To change it: delete the app from the Home Screen, open the site in Safari, then Share → Add to Home Screen.</div></div>
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div>` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
@@ -640,6 +655,7 @@ document.addEventListener('click', async (e) => {
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
     case 'theme': tryLS(() => localStorage.setItem('theme', id)); applyTheme(); render(true); break;
+    case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic(); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
     case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic(); render(true); break;
     case 'pwsave': {
       const v = (i) => document.getElementById(i).value; const er = document.getElementById('pwerr'); er.textContent = '';
@@ -692,6 +708,8 @@ function applyTheme() {
   const dark = th === 'dark' || (th === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.dataset.nav = tryLS(() => localStorage.getItem('navstyle')) || 'glass';
+  const ic = tryLS(() => localStorage.getItem('appicon')) || 'a'; const L = (id, h) => { const el = document.getElementById(id); if (el && el.getAttribute('href') !== h) el.setAttribute('href', h); };
+  L('lati', `/icon-${ic}-180.png`); L('lfav', `/icon-${ic}-192.png`); L('lman', `/manifest-${ic}.webmanifest`);
   const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = dark ? '#0f1115' : '#f3f4f8';
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
@@ -739,6 +757,8 @@ boot();
     const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? dx * 0.25 : dx;
     const c = cur(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${st.dx}px)`; }
     if (st.nb) { st.nb.style.transition = 'none'; st.nb.style.transform = `translateX(${st.dx + (dx < 0 ? W() : -W()) + (dx < 0 ? 16 : -16)}px)`; }
+    const pa = tabBox(S.route), pb = st.nb ? tabBox(MAIN[j]) : null;
+    if (pa && pb) { const k = Math.min(1, Math.abs(st.dx) / W()); setPill({ x: pa.x + (pb.x - pa.x) * k, y: pa.y, w: pa.w + (pb.w - pa.w) * k, h: pa.h }, false); onTab(k > 0.5 ? MAIN[j] : S.route); }
   }, { passive: false });
   function end() {
     if (!st || st.lock !== 'x') { st = null; return; }
@@ -747,6 +767,8 @@ boot();
     const ease = 'transform .3s cubic-bezier(.2,.8,.2,1)'; const sign = s0.dx < 0 ? -1 : 1;
     if (c) { c.style.transition = ease; c.style.transform = done ? `translateX(${sign * (W() + 16)}px)` : ''; }
     if (s0.nb) { s0.nb.style.transition = ease; s0.nb.style.transform = done ? 'translateX(0)' : `translateX(${-sign * (W() + 16)}px)`; }
+    const tb = tabBox(done ? MAIN[s0.j] : S.route); if (tb) { setPill(tb, true); S.pill = tb; }
+    onTab(done ? MAIN[s0.j] : S.route);
     setTimeout(() => {
       if (done) { haptic(); slideDir = ''; lastRoute = MAIN[s0.j]; history.pushState({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); }
       if (s0.nb) s0.nb.remove(); if (st === s0) st = null;
