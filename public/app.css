@@ -388,3 +388,6 @@ input.hasclr.clrl{padding-left:42px!important}
 .txnb{position:absolute;left:16px;right:16px;pointer-events:none}
 .sheet{position:relative}
 .seghi{font-style:normal}
+/* текст сегмента вне плашки сразу обычный, без задержки */
+.seg>button.on,.seg.tt>button.on,.seg.tt>button.on[data-id]{color:var(--mut)!important}
+.seg>button{transition:transform .12s ease,background-color .2s ease!important}

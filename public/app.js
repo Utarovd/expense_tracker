@@ -286,6 +286,27 @@ function segMove(pl, x, w, dur) {
   const sg = pl.parentElement, hi = pl.firstElementChild || segClone(sg, pl);
   pl.style.transition = dur ? `transform ${dur},width ${dur},background .22s ease` : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`;
   if (hi) { hi.style.transition = dur ? `transform ${dur}` : 'none'; hi.style.transform = `translate(${-x}px,${-pl.offsetTop}px)`; }
+  if (sg && sg.classList.contains('tt')) { ttPaint(pl); if (dur) { const t0 = performance.now(); cancelAnimationFrame(pl._raf); const f = () => { ttPaint(pl); if (performance.now() - t0 < 340) pl._raf = requestAnimationFrame(f); }; pl._raf = requestAnimationFrame(f); } }
+}
+// цвет плашки Expense / Income / Transfer плавно смешивается по положению (в OKLab, как реальный переход цвета)
+const TT = { expense: ['#ff6b6b', '#d1213b', [209, 33, 59]], income: ['#34d399', '#05875f', [5, 135, 95]], transfer: ['#60a5fa', '#1d4ed8', [29, 78, 216]] };
+const hex2 = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+const gam = (c) => { c = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; return Math.max(0, Math.min(255, Math.round(c * 255))); };
+function toLab([r, g, b]) { r = lin(r); g = lin(g); b = lin(b); const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b); return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s]; }
+function fromLab([L, A, B]) { const l = Math.pow(L + 0.3963377774 * A + 0.2158037573 * B, 3), m = Math.pow(L - 0.1055613458 * A - 0.0638541728 * B, 3), s = Math.pow(L - 0.0894841775 * A - 1.291485548 * B, 3); return [gam(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s), gam(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s), gam(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s)]; }
+const mixLab = (c1, c2, f) => { // OKLCH: по цветовому кругу (красный → оранжевый → жёлтый → зелёный → бирюзовый → синий)
+  const [L1, a1, b1] = toLab(c1), [L2, a2, b2] = toLab(c2); const C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2); let h1 = Math.atan2(b1, a1), h2 = Math.atan2(b2, a2);
+  let dh = h2 - h1; if (dh > Math.PI) dh -= 2 * Math.PI; if (dh < -Math.PI) dh += 2 * Math.PI;
+  const L = L1 + (L2 - L1) * f, C = C1 + (C2 - C1) * f, h = h1 + dh * f; return fromLab([L, C * Math.cos(h), C * Math.sin(h)]); };
+function ttPaint(pl) {
+  const sg = pl.parentElement; const bs = [...sg.querySelectorAll(':scope > button')]; if (bs.length < 2) return;
+  const tf = getComputedStyle(pl).transform; let x = 0; try { x = new DOMMatrixReadOnly(tf === 'none' ? undefined : tf).m41; } catch (_) { x = 0; }
+  const cx = x + pl.offsetWidth / 2; const cs = bs.map(b => b.offsetLeft + b.offsetWidth / 2); const ty = bs.map(b => b.dataset.id);
+  let i = 0; while (i < cs.length - 2 && cx > cs[i + 1]) i++; const f = Math.max(0, Math.min(1, (cx - cs[i]) / ((cs[i + 1] - cs[i]) || 1)));
+  const A = TT[ty[i]], B = TT[ty[i + 1]]; if (!A || !B) return;
+  const c1 = mixLab(hex2(A[0]), hex2(B[0]), f), c2 = mixLab(hex2(A[1]), hex2(B[1]), f), sh = mixLab(A[2], B[2], f);
+  pl.style.background = `linear-gradient(135deg,rgb(${c1}),rgb(${c2}))`; pl.style.boxShadow = `0 4px 12px rgba(${sh},.3)`;
 }
 const segPos = {};
 function initSegs() {
