@@ -160,3 +160,8 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;word-break:break-all
 .nav a span{width:auto;height:26px;margin:0 0 3px}
 .navadd{height:100%;display:flex;align-items:flex-end;justify-content:center;padding:0 0 4px}
 .navadd button{width:66px;max-width:none;height:66px;border-radius:33px;margin:0}
+.hdl{display:flex;align-items:center;justify-content:center;width:36px;height:36px;margin-right:-8px;color:var(--mut);cursor:grab;touch-action:none;flex:none}
+.hdl:active{cursor:grabbing}
+.dr{position:relative;background:var(--card)}
+.dr.dragging{z-index:5;box-shadow:0 10px 28px rgba(0,0,0,.18);border-radius:14px;transition:box-shadow .2s ease}
+.row.dr.dragging{background:var(--card)}

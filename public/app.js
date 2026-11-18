@@ -130,6 +130,7 @@ const IC = {
   wallet: 'M4 7a2 2 0 0 1 2-2h11v4M4 7v11a2 2 0 0 0 2 2h14V9H6a2 2 0 0 1-2-2zM16.5 14.5h.01',
   plus: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v8M8 12h8',
   add: 'M12 5v14M5 12h14',
+  grip: 'M5 8h14M5 12h14M5 16h14',
   tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
   ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
@@ -373,8 +374,43 @@ function pgBudget() {
 }
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
-  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div>${roots.map(r => `<div class="card"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div><span class="sub">✎</span></div>${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div><span class="sub">✎</span></div>`).join('')}<div class="row" data-act="catnew" data-id="${r.id}" style="padding-left:56px;color:var(--pri)">+ subcategory</div></div>`).join('')}<button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
+  const hdl = `<span class="hdl" data-hdl aria-label="Drag to reorder">${svg('grip', 20)}</span>`;
+  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><div class="row" data-act="catnew" data-id="${r.id}" style="padding-left:56px;color:var(--pri)">+ subcategory</div></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
 }
+// перетаскивание за ручку ☰ (мышь и палец), соседи сдвигаются плавно
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('[data-hdl]'); if (!h) return;
+  e.preventDefault(); e.stopPropagation();
+  const el = h.closest('.dr'); const box = el.parentElement;
+  drag = { el, box, y0: e.clientY, top0: el.offsetTop, moved: false };
+  el.classList.add('dragging'); try { h.setPointerCapture(e.pointerId); } catch (x) { /* */ }
+}, true);
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return; e.preventDefault();
+  const { el, box } = drag; const vis = drag.top0 + (e.clientY - drag.y0); drag.moved = true;
+  const center = vis + el.offsetHeight / 2;
+  const sibs = [...box.children].filter(x => x.classList.contains('dr') && x !== el);
+  for (const sb of sibs) {
+    const mid = sb.offsetTop + sb.offsetHeight / 2; const after = el.compareDocumentPosition(sb) & Node.DOCUMENT_POSITION_FOLLOWING;
+    if ((after && center > mid) || (!after && center < mid)) {
+      const before = sibs.map(x => [x, x.offsetTop]);
+      if (after) box.insertBefore(el, sb.nextSibling); else box.insertBefore(el, sb);
+      before.forEach(([x, t]) => { const d = t - x.offsetTop; if (d) { x.style.transition = 'none'; x.style.transform = `translateY(${d}px)`; requestAnimationFrame(() => { x.style.transition = 'transform .2s ease'; x.style.transform = ''; }); } });
+      break;
+    }
+  }
+  el.style.transform = `translateY(${vis - el.offsetTop}px)`;
+}, { passive: false });
+function endDrag() {
+  if (!drag) return; const { el, box, moved } = drag; drag = null;
+  el.style.transition = 'transform .2s ease'; el.style.transform = ''; el.classList.remove('dragging');
+  setTimeout(() => { el.style.transition = ''; }, 220);
+  if (!moved) return;
+  const ids = [...box.children].filter(x => x.classList.contains('dr')).map(x => x.dataset.id);
+  setTimeout(() => { ids.forEach((id, k) => { const c = byId('categories', id); if (c && c.sort !== k) put('categories', { ...c, sort: k }); }); haptic(); }, 220);
+}
+document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
 function pgRate() {
   const mode = setting('rate_mode', 'auto'), kind = setting('rate_kind', 'buy'); const r = S.rates || {};
   return `<div class="top"><h1>USD rate</h1></div><div class="card">
@@ -488,7 +524,7 @@ function openCat(id, parent) {
   F = { cat: id, ...c };
   openSheet(`<h2>${id ? 'Category' : 'New category'}</h2><div class="lbl">Name</div><input class="f" data-f="name" value="${esc(c.name)}">
   ${c.parent_id ? '' : `<div class="lbl">Icon (emoji)</div><input class="f" data-f="icon" value="${esc(c.icon)}"><div class="lbl">Type</div><select class="f" data-f="kind" ${id ? 'disabled' : ''}><option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>Expense</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>Income</option></select>`}
-  <div style="display:flex;gap:8px;margin:6px 0 14px">${id ? '<button class="btn sec" data-act="catup">↑</button><button class="btn sec" data-act="catdown">↓</button><button class="btn sec" data-act="catarch">Archive</button>' : ''}</div>
+  <div style="display:flex;gap:8px;margin:6px 0 14px">${id ? '<button class="btn sec" data-act="catarch">Archive</button>' : ''}</div>
   <button class="btn full" data-act="catsave">Save</button>`);
 }
 function saveCat() {
@@ -506,6 +542,7 @@ function moveCat(d) {
 
 // ---------- события ----------
 document.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-hdl]')) return;
   const a = e.target.closest('[data-act]'); const g = e.target.closest('[data-go]');
   if (!a && g) { e.preventDefault(); return go(g.dataset.go); }
   if (!a) return; const act = a.dataset.act, id = a.dataset.id;
