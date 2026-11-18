@@ -420,6 +420,7 @@ function openTx(id, type) {
   } else if (t) F = { id: t.id, type: t.type, account: t.account_id, amount: String(t.amount / 100), category: t.category_id || '', note: t.note || t.merchant || '', date: dtLocal(t.occurred_at) };
   else { const def = accounts().find(a => a.type === 'cash') || accounts()[0]; F = { type: type || 'expense', account: def && def.id, from: def && def.id, to: '', amount: '', amount2: '', category: '', note: '', date: dtLocal(now()) }; }
   drawTx();
+  if (!id) { const i = sheetEl() && sheetEl().querySelector('[data-f=amount]'); if (i) i.focus({ preventScroll: true }); }
 }
 function drawTx() {
   const accs = accounts(); const isT = F.type === 'transfer';
@@ -555,6 +556,13 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target;
+  // поля сумм: только цифры, пробелы и один разделитель
+  if (el.inputMode === 'decimal' || el.inputMode === 'numeric') {
+    let v = el.value, c = v;
+    if (el.inputMode === 'numeric') c = v.replace(/\D/g, '');
+    else { c = v.replace(/[^\d.,\s]/g, ''); const i = c.search(/[.,]/); if (i > -1) c = c.slice(0, i + 1) + c.slice(i + 1).replace(/[.,]/g, ''); }
+    if (c !== v) { const p = Math.max(0, (el.selectionStart || c.length) - (v.length - c.length)); el.value = c; try { el.setSelectionRange(p, p); } catch (x) { /* */ } }
+  }
   if (el.dataset.f) { F[el.dataset.f] = el.value; if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
   if (el.id === 'srch') { S.q = el.value; const p = el.selectionStart; render(); const n = document.getElementById('srch'); if (n) { n.focus(); n.setSelectionRange(p, p); } }
   if (el.dataset.bud !== undefined) { clearTimeout(el._t); el._t = setTimeout(() => saveBudget(el.dataset.bud, el.value), 700); }
