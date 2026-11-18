@@ -597,6 +597,15 @@ export default {
         await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(await sha(cookie(req, 'sid'))).run();
         return J({ ok: true }, 200, { 'set-cookie': 'sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' });
       }
+      if (path === '/api/password' && req.method === 'POST') {
+        const b = await req.json(); const u = await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(uid).first();
+        if (!u || (await pbkdf2(String(b.current || ''), unb64(u.pass_salt))) !== u.pass_hash) return J({ error: 'wrong_current' }, 400);
+        if (String(b.next || '').length < 8) return J({ error: 'too_short' }, 400);
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        await env.DB.prepare('UPDATE users SET pass_hash=?, pass_salt=? WHERE id=?').bind(await pbkdf2(String(b.next), salt), b64(salt), uid).run();
+        await env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').bind(uid, await sha(cookie(req, 'sid'))).run();
+        return J({ ok: true });
+      }
       if (path === '/api/me') {
         const u = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(uid).first();
         const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();

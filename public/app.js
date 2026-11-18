@@ -438,6 +438,7 @@ function pgSettings() {
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div>` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
+  <div class="card"><b>Password</b><div class="sub" style="margin:4px 0 10px">Other devices will be signed out, this one stays signed in.</div><input class="f" type="password" id="pw0" placeholder="Current password" autocomplete="current-password"><input class="f" type="password" id="pw1" placeholder="New password (8+ characters)" autocomplete="new-password"><input class="f" type="password" id="pw2" placeholder="Repeat new password" autocomplete="new-password"><div class="err" id="pwerr"></div><button class="btn" data-act="pwsave">Change password</button></div>
   <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
   <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
 }
@@ -584,6 +585,15 @@ document.addEventListener('click', async (e) => {
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
     case 'theme': tryLS(() => localStorage.setItem('theme', id)); applyTheme(); render(true); break;
+    case 'pwsave': {
+      const v = (i) => document.getElementById(i).value; const er = document.getElementById('pwerr'); er.textContent = '';
+      if (v('pw1').length < 8) { er.textContent = 'New password must be at least 8 characters'; break; }
+      if (v('pw1') !== v('pw2')) { er.textContent = 'New passwords don’t match'; break; }
+      const r = await api('/api/password', { method: 'POST', body: JSON.stringify({ current: v('pw0'), next: v('pw1') }) }).catch(() => null);
+      if (!r) { er.textContent = 'No connection to the server'; break; }
+      if (!r.ok) { er.textContent = r.data.error === 'wrong_current' ? 'Current password is wrong' : 'Couldn’t change the password'; break; }
+      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic(); toast('Password changed'); break;
+    }
     case 'syncnow': await sync(); toast('Done'); break;
     case 'copyhook': tryLS(() => navigator.clipboard.writeText(S.me.hook_url)); toast('Copied'); break;
     case 'tgsetup': { const r = await api('/api/tg/setup', { method: 'POST' }).catch(() => null); document.getElementById('tgout').textContent = r && r.data.ok ? 'Webhook connected: @' + r.data.bot : 'Error: ' + (r ? (r.data.desc || r.data.error) : 'no connection'); checkTg(); break; }
