@@ -376,3 +376,15 @@ input.hasclr.clrl{padding-left:42px!important}
 .nav.drag{transform:scale(1.03)}
 .navpill{z-index:2}
 .navhi{font-style:normal}
+/* текст внутри плашки сегмента: белый, снаружи обычный */
+.segpill{overflow:hidden}
+.seghi{position:absolute;left:0;top:0;display:flex;box-sizing:border-box;pointer-events:none}
+.seg .seghi button{color:var(--onpri)!important;background:none!important;box-shadow:none!important;transition:none!important;transform:none!important;opacity:1!important}
+.seg.tt .seghi button{color:#fff!important}
+.seg>button.on,.seg.tt>button.on{color:var(--mut)}
+.segpill{z-index:2}
+/* окно «+»: соседний тип въезжает рядом */
+.sheet{overflow-x:hidden}
+.txnb{position:absolute;left:16px;right:16px;pointer-events:none}
+.sheet{position:relative}
+.seghi{font-style:normal}
