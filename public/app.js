@@ -486,6 +486,7 @@ function pgSettings() {
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto'; const me = S.me || {};
   return `<div class="top"><h1>Settings</h1></div>
   <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
+  <div class="card"><div class="lbl">Menu style</div><div class="seg" style="margin-top:8px;width:max-content">${[['glass', 'Liquid Glass'], ['solid', 'Solid']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('navstyle')) || 'glass') === k ? 'on' : ''}" data-act="navstyle" data-id="${k}">${n}</button>`).join('')}</div></div>
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div>` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
@@ -639,6 +640,7 @@ document.addEventListener('click', async (e) => {
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
     case 'theme': tryLS(() => localStorage.setItem('theme', id)); applyTheme(); render(true); break;
+    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic(); render(true); break;
     case 'pwsave': {
       const v = (i) => document.getElementById(i).value; const er = document.getElementById('pwerr'); er.textContent = '';
       if (v('pw1').length < 8) { er.textContent = 'New password must be at least 8 characters'; break; }
@@ -689,6 +691,7 @@ function applyTheme() {
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto';
   const dark = th === 'dark' || (th === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.nav = tryLS(() => localStorage.getItem('navstyle')) || 'glass';
   const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = dark ? '#0f1115' : '#f3f4f8';
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
