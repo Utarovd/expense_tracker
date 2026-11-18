@@ -45,7 +45,7 @@ Tip: to pick a property, tap the variable after you insert **Shortcut Input**; a
 - SMS and Wallet for the same payment are merged into one record (same amount within 15 minutes).
 - A Visa payment that Wallet reports in sums is converted to dollars at the current rate (the Telegram message shows it).
 - **IYB MOBILE EXCHANGE** is recorded as a transfer UZS card → Visa; the dollar part is an estimate at the sell rate, correct it in **Transactions**.
-- For a new merchant the bot asks "Куда отнести?"-style category buttons (English: pick a category); next time it remembers.
+- For a new merchant the bot asks "Which category?" with buttons; next time it remembers.
 - If the bank balance in the SMS differs from the app, the bot warns you.
 
 ## Quick entry
