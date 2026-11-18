@@ -37,6 +37,16 @@ async function api(path, opt = {}, ms = 15000) {
 let syncT;
 function scheduleSync() { clearTimeout(syncT); syncT = setTimeout(sync, 400); }
 const pendingCount = () => TABLES.reduce((n, t) => n + Object.keys(S.queue[t]).length, 0);
+// разовая перестановка: Visa в конец списка счетов (Doniyor, 19.11)
+function migrateVisaLast() {
+  if (setting('m_visa_last', '')) return;
+  const all = rows('accounts'); if (!all.length) return;
+  [...new Set(all.map(a => a.space_id))].forEach(sp => {
+    const list = all.filter(a => a.space_id === sp); const mx = Math.max(...list.map(a => a.sort || 0));
+    list.filter(a => a.type === 'card_visa').forEach((v, i) => { if ((v.sort || 0) < mx || list.filter(a => (a.sort || 0) === mx).length > 1) put('accounts', { ...v, sort: mx + 1 + i }); });
+  });
+  setSetting('m_visa_last', '1');
+}
 async function sync() {
   if (S.syncing || !S.user || !navigator.onLine) return;
   S.syncing = true;
@@ -54,6 +64,7 @@ async function sync() {
       }
     });
     S.cursor = data.cursor; S.lastSync = now();
+    migrateVisaLast();
     ensureSpace(); persist(); render(true);
   } catch (e) { /* оффлайн: повторим позже */ }
   S.syncing = false; updateBadge();
@@ -93,11 +104,12 @@ function curRate() {
   return r[k] || r.cbu || man || 12700;
 }
 const fmtRate = (r) => Math.round(r).toLocaleString('ru-RU').replace(/\s/g, ' ') + ' UZS';
-function fmt(minor, cur) {
-  if (S.hide) return '*****';
+function fmt(minor, cur, bare) {
+  const u = cur === 'USD' || bare ? '' : ' UZS';
+  if (S.hide) return cur === 'USD' ? '$*****' : '*****' + u;
   const v = minor / 100;
   if (cur === 'USD') return (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return (v < 0 ? '−' : '') + Math.abs(Math.round(v)).toLocaleString('ru-RU').replace(/ /g, ' ');
+  return (v < 0 ? '−' : '') + Math.abs(Math.round(v)).toLocaleString('ru-RU').replace(/ /g, ' ') + u;
 }
 function balance(acc) {
   let b = acc.opening_balance || 0;
@@ -277,7 +289,7 @@ function limitsCard(m, sp) {
   const rs = cats('expense').filter(c => !c.parent_id && !c.archived).map(c => { const b = budgetFor(c.id, m); return b && b.limit_amount > 0 ? { c, b, v: sp.out[c.id] || 0 } : null; }).filter(Boolean)
     .map(x => ({ ...x, p: Math.round(x.v / x.b.limit_amount * 100) })).sort((a, b) => b.p - a.p).slice(0, 3);
   if (!rs.length) return '';
-  return `<div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Category limits</div>${rs.map(x => `<div class="lim"><div class="limh"><div class="ico sm">${rootIcon(x.c, 18)}</div><b class="grow">${esc(x.c.name)}</b><span class="sub">${fmt(x.v, 'UZS')} / ${fmt(x.b.limit_amount, 'UZS')} UZS</span></div><div class="bar"><i class="${x.p >= 90 ? 'gr-red' : x.p >= 50 ? 'gr-ylw' : 'gr-grn'}" style="width:${Math.min(100, x.p)}%"></i></div><div class="sub limp">${x.p}%${x.p >= 100 ? ' · over the limit' : x.p >= 90 ? ' · almost at the limit' : ''}</div></div>`).join('')}</div>`;
+  return `<div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Category limits</div>${rs.map(x => `<div class="lim"><div class="limh"><div class="ico sm">${rootIcon(x.c, 18)}</div><b class="grow">${esc(x.c.name)}</b><span class="sub">${fmt(x.v, 'UZS', 1)} / ${fmt(x.b.limit_amount, 'UZS')}</span></div><div class="bar"><i class="${x.p >= 90 ? 'gr-red' : x.p >= 50 ? 'gr-ylw' : 'gr-grn'}" style="width:${Math.min(100, x.p)}%"></i></div><div class="sub limp">${x.p}%${x.p >= 100 ? ' · over the limit' : x.p >= 90 ? ' · almost at the limit' : ''}</div></div>`).join('')}</div>`;
 }
 const emptyState = () => `<div class="empty"><svg width="112" height="90" viewBox="0 0 120 96" fill="none" aria-hidden="true"><ellipse cx="60" cy="88" rx="38" ry="5" fill="var(--line)"/><rect x="22" y="24" width="76" height="52" rx="12" fill="#1b2f5e"/><path d="M22 38c0-7 5-12 12-12h52c7 0 12 5 12 12" stroke="#5b7bc4" stroke-width="3" stroke-linecap="round"/><rect x="70" y="46" width="30" height="18" rx="7" fill="#f5c518"/><circle cx="79" cy="55" r="3.2" fill="#1b2f5e"/><path d="M95 8l2.5 6 6 2.5-6 2.5-2.5 6-2.5-6-6-2.5 6-2.5z" fill="#f5c518"/><path d="M27 6l1.5 3.5L32 11l-3.5 1.5L27 16l-1.5-3.5L22 11l3.5-1.5z" fill="#f5c518" opacity=".7"/></svg><b>Your expenses will appear here</b><span class="sub">Add one with the yellow + or send it to the bot</span></div>`;
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -296,7 +308,7 @@ function animateBalance() {
   const to = +el.dataset.v; const from = S.balShown ?? to; S.balShown = to;
   if (from === to || S.hide) return; cancelAnimationFrame(balAnim);
   const t0 = performance.now(), dur = 600;
-  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); const v = Math.round((from + (to - from) * e) / 100) * 100; const n = document.getElementById('bal'); if (!n) return; n.textContent = fmt(v, 'UZS') + ' UZS'; if (k < 1) balAnim = requestAnimationFrame(step); };
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); const v = Math.round((from + (to - from) * e) / 100) * 100; const n = document.getElementById('bal'); if (!n) return; n.textContent = fmt(v, 'UZS'); if (k < 1) balAnim = requestAnimationFrame(step); };
   balAnim = requestAnimationFrame(step);
 }
 function pgHome() {
@@ -307,9 +319,9 @@ function pgHome() {
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
-  <div class="card hero"><button class="eyeb" data-act="hide" aria-label="${S.hide ? 'Show amounts' : 'Hide amounts'}">${svg(S.hide ? 'eye' : 'eyeoff', 22)}</button><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')} UZS</div><div class="sub">≈ $${S.hide ? '*****' : (tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${fmtRate(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
+  <div class="card hero"><button class="eyeb" data-act="hide" aria-label="${S.hide ? 'Show amounts' : 'Hide amounts'}">${svg(S.hide ? 'eye' : 'eyeoff', 22)}</button><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')}</div><div class="sub">≈ $${S.hide ? '*****' : (tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${fmtRate(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
-  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS')} / ${fmt(bud.limit_amount, 'UZS')} UZS</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
+  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS', 1)} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   ${limitsCard(m, sp)}
   <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
   <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || emptyState()}</div>`;
@@ -395,7 +407,7 @@ function pgStats() {
 function pgAccounts() {
   const accs = accounts();
   return `<div class="top"><h1>Accounts</h1>${spaceSwitch()}</div>
-  <div class="card">${accs.map(a => `<div class="row" data-act="accedit" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}${a.card_last4 ? ' ···' + esc(a.card_last4) : ''}</b><span class="sub">${a.currency}${a.hidden ? ' · hidden' : ''}${a.exclude_from_total ? ' · excluded' : ''}</span></div><div class="amt">${fmt(balance(a), a.currency)}</div></div>`).join('')}</div>
+  <div class="card"><div class="dz" data-table="accounts">${accs.map(a => `<div class="row dr" data-act="accedit" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}${a.card_last4 ? ' ···' + esc(a.card_last4) : ''}</b><span class="sub">${a.currency}${a.hidden ? ' · hidden' : ''}${a.exclude_from_total ? ' · excluded' : ''}</span></div><div class="amt">${fmt(balance(a), a.currency)}</div><span class="hdl" data-hdl aria-label="Drag to reorder">${svg('grip', 20)}</span></div>`).join('')}</div></div>
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
@@ -444,7 +456,8 @@ function endDrag() {
   setTimeout(() => { el.style.transition = ''; }, 220);
   if (!moved) return;
   const ids = [...box.children].filter(x => x.classList.contains('dr')).map(x => x.dataset.id);
-  setTimeout(() => { ids.forEach((id, k) => { const c = byId('categories', id); if (c && c.sort !== k) put('categories', { ...c, sort: k }); }); haptic(); }, 220);
+  const tb = box.dataset.table || 'categories';
+  setTimeout(() => { ids.forEach((id, k) => { const c = byId(tb, id); if (c && c.sort !== k) put(tb, { ...c, sort: k }); }); haptic(); }, 220);
 }
 document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
 function pgRate() {
