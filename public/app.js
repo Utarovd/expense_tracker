@@ -129,6 +129,7 @@ const IC = {
   heart: 'M12 20s-8-4.6-8-10.6A4.4 4.4 0 0 1 12 6.6a4.4 4.4 0 0 1 8 2.8C20 15.4 12 20 12 20z',
   wallet: 'M4 7a2 2 0 0 1 2-2h11v4M4 7v11a2 2 0 0 0 2 2h14V9H6a2 2 0 0 1-2-2zM16.5 14.5h.01',
   plus: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v8M8 12h8',
+  add: 'M12 5v14M5 12h14',
   tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
   ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
@@ -184,11 +185,20 @@ function quickAdd(text) {
   if (q.note) { const same = rows('transactions').filter(t => (t.note || t.merchant || '').toLowerCase() === q.note.toLowerCase() && t.category_id).sort((a, b) => b.occurred_at - a.occurred_at)[0]; if (same) cat = same.category_id; }
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
-  toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
+  haptic(); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
 }
 
 // ---------- UI-утилиты ----------
 let toastT;
+// отклик вибрацией: Android через vibrate, iPhone (Safari 18+) через системный переключатель
+let hapEl;
+function haptic() {
+  try {
+    if (navigator.vibrate) { navigator.vibrate(12); return; }
+    if (!hapEl) { hapEl = document.createElement('label'); hapEl.style.cssText = 'position:fixed;left:-99px;top:0;opacity:0;pointer-events:none'; hapEl.innerHTML = '<input type="checkbox" switch>'; document.body.appendChild(hapEl); }
+    hapEl.click();
+  } catch (e) { /* нет поддержки */ }
+}
 function toast(msg, onTap) {
   let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
   el.textContent = msg; el.onclick = onTap || null; el.style.pointerEvents = onTap ? 'auto' : 'none'; requestAnimationFrame(() => el.classList.add('on'));
@@ -231,14 +241,15 @@ function render(soft) {
   const focus = document.activeElement && document.activeElement.id;
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
   if (keep) return; // не перерисовываем поверх вводимого текста
-  $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) + (['/', '/transactions'].includes(r) ? '<button class="fab" data-act="add">+</button>' : '');
+  $app.innerHTML = `<div class="${lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
   if (soft) window.scrollTo(0, scroll);
   if (focus) { const e = document.getElementById(focus); if (e) e.focus(); }
 }
 function nav(on) {
   const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'Transactions'], ['/stats', 'chart', 'Stats'], ['/accounts', 'card', 'Accounts'], ['/more', 'user', 'Profile']];
-  return `<div class="nav"><div>${it.map(([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`).join('')}</div></div>`;
+  const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
+  return `<div class="nav"><div>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
 }
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
 const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${monthName(curMonth())}</b><button data-act="mnext">›</button></div>`;
@@ -283,12 +294,25 @@ function pgTrans() {
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
 const colOf = (it, i) => (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length];
+function selSlice(id) {
+  const box = document.querySelector('.dwrap'); if (!box) return;
+  const cur = box.dataset.sel || ''; const nx = cur === id ? '' : id; box.dataset.sel = nx; box.classList.toggle('has', !!nx);
+  box.querySelectorAll('.sl').forEach(c => c.classList.toggle('on', c.dataset.id === nx));
+  box.querySelectorAll('.dc,.sdet').forEach(c => c.classList.toggle('on', c.dataset.for === nx));
+  document.querySelectorAll('.legend').forEach(l => l.classList.toggle('on', l.dataset.id === nx));
+  haptic();
+}
 function pgStats() {
   const m = curMonth(); const sp = spentByRoot(m); const disp = S.dispCur || 'UZS'; const rate = curRate();
   const conv = (v) => disp === 'USD' ? v / rate : v; const f = (v) => disp === 'USD' ? fmt(Math.round(conv(v)), 'USD') : fmt(v, 'UZS');
   const items = Object.entries(sp.out).map(([id, v]) => ({ id, v, c: byId('categories', id) })).sort((a, b) => b.v - a.v);
-  let acc = 0; const R = 70, C = 2 * Math.PI * R;
-  const donut = sp.total ? `<svg viewBox="0 0 200 200" width="190" height="190" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const s = `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="36" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>` : '<div class="sub">No expenses</div>';
+  let acc = 0; const R = 70, C = 2 * Math.PI * R; const [a0, b0] = monthRange(m);
+  const pct = (v) => Math.round(v / sp.total * 100);
+  const donut = sp.total ? `<div class="donut"><svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const gap = items.length > 1 ? 1.5 : 0; const s = `<circle data-act="slice" data-id="${it.id}" class="sl" r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="34" stroke-dasharray="${Math.max(0.1, len - gap)} ${C - len + gap}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>
+    <div class="dc" data-for=""><b>${f(sp.total)}</b><span>total</span></div>${items.map((it, i) => `<div class="dc" data-for="${it.id}"><b style="color:${colOf(it, i)}">${pct(it.v)}%</b><span>${it.c ? esc(it.c.name) : 'No category'}</span></div>`).join('')}</div>`
+    + items.map((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? byId('categories', t.category_id).name : 'General'; subs[k] = (subs[k] || 0) + t.amount_base; } });
+      return `<div class="sdet" data-for="${it.id}"><div class="sdh"><b>${it.c ? esc(it.c.name) : 'No category'}</b><b>${f(it.v)}</b></div>${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="sdr"><span>${esc(k)}</span><span>${f(v)}</span></div>`).join('')}</div>`; }).join('')
+    : '<div class="sub">No expenses</div>';
   // столбцы по дням
   const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
   rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
@@ -297,8 +321,8 @@ function pgStats() {
   const bud = budgetFor(null, m);
   return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>${mnav()}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
-  <div class="card" style="text-align:center"><div class="lbl">Spent this month</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div style="display:flex;justify-content:center;margin:12px 0">${donut}</div>
-  ${items.map((it, i) => `<div class="legend"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
+  <div class="card" style="text-align:center"><div class="lbl">Spent this month</div><div class="big">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donut}</div>
+  ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
   <div class="card"><div class="lbl">By day</div>${bars}</div>`;
 }
 function pgAccounts() {
@@ -405,11 +429,11 @@ function saveTx() {
     put('transactions', tx);
     if (tx.merchant && tx.category_id) { /* память мерчант→категория ведёт бот; здесь не трогаем */ }
   }
-  closeSheet(); toast('Saved');
+  closeSheet(); haptic(); toast('Saved');
 }
 function deleteTx() {
   if (F.type === 'transfer') (F.legs || []).forEach(l => del('transactions', l.id)); else del('transactions', F.id);
-  closeSheet(); toast('Deleted');
+  closeSheet(); haptic(); toast('Deleted');
 }
 function openAcc(id) {
   const a = id ? byId('accounts', id) : { type: 'card_uzs', currency: 'UZS', name: '', card_last4: '', opening_balance: 0, hidden: 0, exclude_from_total: 0 };
@@ -462,6 +486,7 @@ document.addEventListener('click', async (e) => {
       S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); break; }
     case 'logout': if (!(await ask('Log out?', '', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
     case 'add': openTx(null); break;
+    case 'slice': selSlice(id); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
     case 'space': S.space = id; persist(); render(); break;
     case 'mprev': S.month = shiftMonth(curMonth(), -1); render(); break;
@@ -480,7 +505,7 @@ document.addEventListener('click', async (e) => {
     case 'accnew': openAcc(null); break;
     case 'fflag': F[id] = F[id] ? 0 : 1; a.classList.toggle('on'); break;
     case 'accsave': saveAcc(); break;
-    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); toast('Deleted'); } break;
+    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic(); toast('Deleted'); } break;
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
     case 'catsave': saveCat(); break;
