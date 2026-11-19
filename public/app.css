@@ -418,10 +418,18 @@ button.catf.none{color:var(--mut)}
 .cpp .grab{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:-6px auto 10px}
 .cpp h2{margin:4px 0 8px;font-size:20px;flex:none}
 .cpl{overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;position:relative;padding-bottom:calc(20px + env(safe-area-inset-bottom));margin:0 -16px;padding-left:16px;padding-right:16px}
-.cps{margin-top:12px}
+.cps{margin-top:6px}
 .cph{display:flex;align-items:center;gap:12px;padding:8px 4px;font-size:20px;font-weight:700;cursor:pointer;border-radius:12px}
+.cpa{flex:none;color:var(--mut);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.cps.open .cpa{transform:rotate(180deg)}
+/* раскрытие раздела: высота через grid-template-rows 0fr→1fr, строки проявляются; в обе стороны 300 мс */
+.cpb{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s cubic-bezier(.4,0,.2,1)}
+.cps.open .cpb{grid-template-rows:1fr}
+.cpbi{min-height:0;overflow:hidden;opacity:0;transform:translate3d(0,-6px,0);transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1)}
+.cps.open .cpbi{opacity:1;transform:none}
 .cpi{display:flex;align-items:center;padding:12px 4px 12px 50px;font-size:17px;border-top:1px solid var(--line);cursor:pointer}
 .cpi.cp0{padding-left:4px;border-top:0;border-bottom:1px solid var(--line)}
 .cpi .grow,.cph .grow{flex:1}
-.cp .sel{color:var(--pri)}.cpk{font-weight:700;color:var(--pri)}
+.cp .sel{color:var(--pri)}.cpk{font-weight:700;color:var(--pri);margin-left:auto}
+.cpp{touch-action:pan-y}
 .cph:active,.cpi:active{background:var(--line)}

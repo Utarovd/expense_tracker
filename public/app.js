@@ -121,23 +121,65 @@ function seedRules() {
 }
 const catLabel = (id) => { const c = byId('categories', id); if (!c) return '—'; const p = c.parent_id && byId('categories', c.parent_id); return (p ? p.name + ' › ' : '') + c.name; };
 // ---------- выбор категории: своя шторка поверх окна (в стандартном списке iOS заголовки разделов не настроить) ----------
-// Раздел выбирается тапом по заголовку (20 px), подкатегории — без названия раздела; в поле показывается «Раздел › Подкатегория»
+// Разделы — раскрывающиеся списки (заголовок 20 px, стрелка поворачивается, список плавно раскрывается и сворачивается).
+// Раздел без подкатегории выбирается первой строкой «All <Раздел>» в раскрытом списке; раздел без подкатегорий — тапом по заголовку.
+// В поле показывается «Раздел › Подкатегория». Шторка закрывается свайпом вниз, когда список не прокручен.
 function catField(key, val, kind) { return `<button type="button" class="f catf${val ? '' : ' none'}" data-act="catpick" data-cf="${key}" data-kind="${kind}">${val ? esc(catLabel(val)) : 'No category'}</button>`; }
 function setCatField(btn, id) { btn.textContent = id ? catLabel(id) : 'No category'; btn.classList.toggle('none', !id); }
 function openCatPicker(btn) {
   const key = btn.dataset.cf, kinds = btn.dataset.kind ? [btn.dataset.kind] : ['expense', 'income'], cur = F[key] || '';
-  const row = (c, sub) => `<div class="${sub ? 'cpi' : 'cph'}${c.id === cur ? ' sel' : ''}" data-cid="${c.id}">${sub ? '' : `<span class="ico sm">${rootIcon(c, 18)}</span>`}<span class="grow">${esc(c.name)}</span>${c.id === cur ? '<span class="cpk">✓</span>' : ''}</div>`;
-  const body = kinds.map(k => cats(k).filter(c => !c.parent_id && !c.archived).map(p => `<div class="cps">${row(p)}${cats(k).filter(c => c.parent_id === p.id && !c.archived).map(c => row(c, true)).join('')}</div>`).join('')).join('');
+  const ck = (id) => id === cur ? '<span class="cpk">✓</span>' : '';
+  const sec = (p, k) => {
+    const subs = cats(k).filter(c => c.parent_id === p.id && !c.archived); const open = p.id === cur || subs.some(c => c.id === cur);
+    if (!subs.length) return `<div class="cps"><div class="cph${p.id === cur ? ' sel' : ''}" data-cid="${p.id}"><span class="ico sm">${rootIcon(p, 18)}</span><span class="grow">${esc(p.name)}</span>${ck(p.id)}</div></div>`;
+    return `<div class="cps${open ? ' open' : ''}"><div class="cph${open ? ' sel' : ''}" data-tog><span class="ico sm">${rootIcon(p, 18)}</span><span class="grow">${esc(p.name)}</span><svg class="cpa" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>`
+      + `<div class="cpb"><div class="cpbi"><div class="cpi${p.id === cur ? ' sel' : ''}" data-cid="${p.id}"><span class="grow">All ${esc(p.name)}</span>${ck(p.id)}</div>${subs.map(c => `<div class="cpi${c.id === cur ? ' sel' : ''}" data-cid="${c.id}"><span class="grow">${esc(c.name)}</span>${ck(c.id)}</div>`).join('')}</div></div></div>`;
+  };
+  const body = kinds.map(k => cats(k).filter(c => !c.parent_id && !c.archived).map(p => sec(p, k)).join('')).join('');
   const el = document.createElement('div'); el.className = 'cp';
   el.innerHTML = `<div class="cpp"><i class="grab"></i><h2>Category</h2><div class="cpl">${key === 'category' ? `<div class="cpi cp0${cur ? '' : ' sel'}" data-cid="">No category${cur ? '' : '<span class="cpk">✓</span>'}</div>` : ''}${body}</div></div>`;
   document.body.appendChild(el); void el.offsetWidth; el.classList.add('on');
-  const close = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 300); };
+  const pp = el.querySelector('.cpp'), list = el.querySelector('.cpl');
+  let gone = false;
+  const close = (curve) => {
+    if (gone) return; gone = true;
+    if (curve) { pp.style.transition = 'transform ' + curve; pp.style.transform = `translate3d(0,${pp.offsetHeight + 40}px,0)`; }
+    el.classList.remove('on'); setTimeout(() => el.remove(), 320);
+  };
   el.addEventListener('click', (e) => {
+    const tg = e.target.closest('[data-tog]');
+    if (tg) { // раскрыть раздел (открытые остальные сворачиваются одновременно)
+      const s = tg.parentNode, was = s.classList.contains('open');
+      el.querySelectorAll('.cps.open').forEach(x => { if (x !== s) x.classList.remove('open'); });
+      s.classList.toggle('open', !was); haptic(); return;
+    }
     const r = e.target.closest('[data-cid]'); if (!r) { if (e.target === el) close(); return; }
     F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic(); close();
   });
+  // свайп вниз: шторка едет за пальцем, когда список вверху; отпускание — пружина со скоростью пальца
+  let st = null;
+  pp.addEventListener('touchstart', (e) => { if (e.touches.length !== 1) { st = null; return; } const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, on: false, dy: 0, t0: Date.now() }; }, { passive: true });
+  pp.addEventListener('touchmove', (e) => {
+    if (!st) return; const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (!st.on) {
+      const inList = list.contains(e.target);
+      if (dy > 8 && dy > Math.abs(dx) * 1.2 && (!inList || list.scrollTop <= 0)) { st.on = true; st.y = t.clientY; pp.style.transition = 'none'; }
+      else if (Math.abs(dx) > 10 || dy < -8 || (dy > 8 && inList && list.scrollTop > 0)) { st = null; return; }
+      else return;
+    }
+    const d = Math.max(0, t.clientY - st.y); st.dy = d; trackV(st, d); if (e.cancelable) e.preventDefault();
+    pp.style.transform = `translate3d(0,${d}px,0)`;
+  }, { passive: false });
+  const end = () => {
+    if (!st) return; const s2 = st; st = null; if (!s2.on) return;
+    if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const v = s2.v || 0, H = pp.offsetHeight + 40;
+    if (s2.dy > 110 || v > 0.6) return close(springCurve(H - s2.dy, v));
+    pp.style.transition = 'transform ' + springCurve(-s2.dy, v); pp.style.transform = 'translate3d(0,0,0)';
+    setTimeout(() => { if (!gone) { pp.style.transition = ''; pp.style.transform = ''; } }, 320);
+  };
+  pp.addEventListener('touchend', end); pp.addEventListener('touchcancel', end);
   // список открывается на разделе выбранной категории (заголовок раздела виден целиком)
-  const sel = el.querySelector('.sel'), list = el.querySelector('.cpl'); const sec = sel && sel.closest('.cps'); if (sec && sec.offsetTop + sec.offsetHeight > list.clientHeight) list.scrollTop = sec.offsetTop - 4;
+  const os = el.querySelector('.cps.open'); if (os && os.offsetTop + os.offsetHeight > list.clientHeight) list.scrollTop = os.offsetTop - 4;
 }
 function ruleWord(note) { const w = wordsOf(note).find(x => x.length >= 3 && !/^\d/.test(x)); return w || ''; }
 const setting = (k, d) => { const r = S.db.settings[k]; return r && !r.deleted_at && r.value != null ? r.value : d; };
@@ -200,6 +242,7 @@ const IC = {
   grip: 'M5 8h14M5 12h14M5 16h14',
   eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   eyeoff: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 4l16 16',
+  med: 'M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z',
   ring: 'M12 21a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM9.6 9.5 7.5 6l2-2.5h5l2 2.5-2.1 3.5M7.5 6h9',
   gift: 'M3.5 8.5h17v4h-17zM5 12.5V20h14v-7.5M12 8.5V20M12 8.5S10.6 4 8.3 4.6C6.6 5 7 8.5 12 8.5zM12 8.5s1.4-4.5 3.7-3.9C17.4 5 17 8.5 12 8.5z',
   tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
@@ -207,7 +250,7 @@ const IC = {
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
 };
 const svg = (n, sz = 22) => `<svg class="i i-${n}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
-const CATIC = { food: 'food', home: 'home', leisure: 'game', transport: 'car', expenses: 'receipt', nilufar: 'ring', family: 'family', 'family & kids': 'family', shopping: 'bag', health: 'heart',
+const CATIC = { food: 'food', home: 'home', leisure: 'game', transport: 'car', expenses: 'receipt', nilufar: 'heart', family: 'family', 'family & kids': 'family', shopping: 'bag', health: 'med',
   'gifts & events': 'gift', finance: 'card', other: 'tag', salary: 'wallet', business: 'bag', gifts: 'gift', cashback: 'rate', 'other income': 'plus' };
 const rootIcon = (r, sz) => !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
 const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
