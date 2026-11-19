@@ -908,7 +908,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   function cleanup() { if (!st) return; if (st.nb) st.nb.remove(); const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; } st = null; }
   document.addEventListener('touchstart', (e) => {
     cleanup();
-    if (e.touches.length !== 1 || ovEl || !S.user || !MAIN.includes(S.route) || e.target.closest('input,select,textarea,.chips,.ov,.dwrap,[data-hdl],.trend,.nav')) return;
+    if (e.touches.length !== 1 || ovEl || !S.user || !MAIN.includes(S.route) || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
     const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
@@ -991,7 +991,12 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const keep = F; F = typeF(ty); let html; try { html = txHtml(); } finally { F = keep; }
     const tmp = document.createElement('div'); tmp.innerHTML = html; const nb = document.createElement('div'); nb.className = 'txnb';
     parts(tmp).forEach(e => nb.appendChild(e)); const sh = sheetEl(); const first = parts()[0];
-    nb.style.top = (first ? first.offsetTop : 0) + 'px'; sh.appendChild(nb); return nb;
+    sh.appendChild(nb); alignTop(nb, first); return nb;
+  }
+  // слой с соседней формой ставим ровно на уровень текущей: меряем фактическое положение (отступы первого поля не должны сдвигать его вниз)
+  function alignTop(layer, ref) {
+    layer.style.top = (ref ? ref.offsetTop : 0) + 'px'; const f = layer.firstElementChild; if (!ref || !f) return;
+    const d = ref.getBoundingClientRect().top - f.getBoundingClientRect().top; if (Math.abs(d) > 0.5) layer.style.top = (parseFloat(layer.style.top) + d) + 'px';
   }
   const move = (els, x, dur) => els.forEach(el => { el.style.transition = dur ? `transform ${dur}` : 'none'; el.style.transform = x ? `translateX(${x}px)` : ''; });
   document.addEventListener('touchstart', (e) => {
@@ -1019,12 +1024,12 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const pl = s0.seg.querySelector(':scope > .segpill'); const bs = s0.seg.querySelectorAll(':scope > button');
     if (done) {
       // старое содержимое уезжает «призраком», новое (настоящее, с фокусом на сумме) доезжает с места предпросмотра
-      const sh = sheetEl(); const ghost = document.createElement('div'); ghost.className = 'txnb'; const old = parts(); ghost.style.top = (old[0] ? old[0].offsetTop : 0) + 'px';
+      const sh = sheetEl(); const ghost = document.createElement('div'); ghost.className = 'txnb'; const old = parts();
       old.forEach(el => { const c = el.cloneNode(true); c.style.transform = ''; c.style.transition = ''; ghost.appendChild(c); });
       const tgt = bs[s0.j]; segPos['ftype:ov'] = { x: s0.px, w: s0.pw, t: TY[s0.j] };
       const nbX = s0.dx - sign * w0; if (s0.nb) s0.nb.remove();
       haptic(); setFType(TY[s0.j]);
-      const sh2 = sheetEl(); sh2.appendChild(ghost); move([ghost], s0.dx, ''); const neu = parts(); move(neu, nbX, '');
+      const sh2 = sheetEl(); const neu = parts(); sh2.appendChild(ghost); alignTop(ghost, neu[0]); move([ghost], s0.dx, ''); move(neu, nbX, '');
       const pl2 = sh2.querySelector('.seg.tt > .segpill'), b2 = sh2.querySelectorAll('.seg.tt > button')[s0.j];
       if (pl2 && b2) { pl2._t = TY[s0.j] + b2.offsetLeft + ':' + b2.offsetWidth; pl2.dataset.t = TY[s0.j]; segMove(pl2, s0.px, s0.pw, ''); pl2.style.opacity = 1; }
       requestAnimationFrame(() => requestAnimationFrame(() => {
