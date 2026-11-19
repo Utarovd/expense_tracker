@@ -98,14 +98,27 @@ const wordsOf = (t) => String(t || '').toLowerCase().replace(/ё/g, 'е').match(
 const rules = () => { try { const r = JSON.parse(setting('cat_rules', '[]')); return Array.isArray(r) ? r : []; } catch (_) { return []; } };
 const saveRules = (r) => setSetting('cat_rules', JSON.stringify(r));
 function ruleCat(text, kind) {
-  const ws = wordsOf(text); if (!ws.length) return null; let best = null, bl = 0;
+  // совпало несколько правил с разными категориями — не угадываем, категорию спросим (Doniyor 19.11)
+  const ws = wordsOf(text); if (!ws.length) return null; const hit = new Set();
   rules().forEach(r => { const c = byId('categories', r.c); if (!c || c.deleted_at || (kind && c.kind !== kind)) return; const sts = wordsOf(r.w).map(stemOf); if (!sts.length) return;
-    if (sts.every(st => ws.some(w => w.startsWith(st)))) { const l = sts.join('').length; if (l > bl) { best = r; bl = l; } } });
-  return best ? best.c : null;
+    if (sts.every(st => ws.some(w => w.startsWith(st)))) hit.add(r.c); });
+  return hit.size === 1 ? [...hit][0] : null;
 }
-function seedRules() { // одно правило, о котором сказал Doniyor; остальные он добавит сам или они запомнятся
-  if (S.db.settings && S.db.settings.cat_rules) return; const lei = cats('expense').find(c => !c.parent_id && /^leisure$/i.test(c.name)); if (!lei) return;
-  const g = cats('expense').find(c => c.parent_id === lei.id && /^gaming$/i.test(c.name)); if (g) saveRules([{ w: 'компы', c: g.id }]);
+// стартовые правила по словам Doniyor (19.11): компы → Gaming; снеки → Snacks; блюда и фастфуд → Dine out; продукты и закупки → Family › Groceries.
+// Добавляются один раз (метка cat_rules_seed), уже существующие слова не трогаем
+const SEED = [['Leisure', 'Gaming', ['компы']],
+  ['Food', 'Snacks', ['снеки', 'чипсы', 'сникерс', 'шоколад', 'печенье', 'snacks']],
+  ['Food', 'Dine out', ['плов', 'шаурма', 'бургер', 'пицца', 'суши', 'лагман', 'самса', 'шашлык', 'манты', 'кебаб', 'донер', 'лаваш', 'хотдог', 'кафе', 'ресторан', 'burger', 'pizza', 'kfc', 'evos', 'oqtepa']],
+  ['Family', 'Groceries', ['продукты', 'корзинка', 'korzinka', 'базар', 'bozor', 'макро', 'makro', 'havas', 'супермаркет']],
+  // машина: бензин → Gas, штрафы → Fines, остальное про машину — сам Transport
+  ['Transport', 'Gas', ['бензин', 'заправка', 'топливо', 'метан', 'пропан', 'benzin', 'yoqilg\'i', 'gas']],
+  ['Transport', 'Fines', ['штраф', 'jarima']],
+  ['Transport', '', ['мойка', 'автомойка', 'шиномонтаж', 'парковка', 'стоянка', 'запчасти', 'автосервис', 'техосмотр', 'страховка', 'машина', 'avto', 'moyka']]];
+function seedRules() {
+  if (setting('cat_rules_seed', '') === '3') return; const ex = cats('expense'); if (!ex.length) return;
+  const r = rules(); const have = new Set(r.map(x => x.w)); let n = 0;
+  SEED.forEach(([pn, cn, ws]) => { const p = ex.find(c => !c.parent_id && c.name.toLowerCase() === pn.toLowerCase()); const c = p && (cn ? ex.find(x => x.parent_id === p.id && x.name.toLowerCase() === cn.toLowerCase()) : p); if (!c) return; ws.forEach(w => { if (!have.has(w)) { r.push({ w, c: c.id }); n++; } }); });
+  if (n) saveRules(r); setSetting('cat_rules_seed', '3');
 }
 const catLabel = (id) => { const c = byId('categories', id); if (!c) return '—'; const p = c.parent_id && byId('categories', c.parent_id); return (p ? p.name + ' › ' : '') + c.name; };
 function ruleWord(note) { const w = wordsOf(note).find(x => x.length >= 3 && !/^\d/.test(x)); return w || ''; }

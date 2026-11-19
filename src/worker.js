@@ -272,9 +272,9 @@ async function ruleCat(env, space, text, kind) {
   let rules = []; try { rules = JSON.parse(row.value) || []; } catch (_) { return null; }
   const ws = wordsOf(text); if (!ws.length || !rules.length) return null;
   const { results } = await env.DB.prepare('SELECT id, kind FROM categories WHERE space_id=? AND deleted_at IS NULL').bind(space).all(); const ok = new Map(results.map(c => [c.id, c.kind]));
-  let best = null, bl = 0;
-  for (const r of rules) { if (ok.get(r.c) !== kind) continue; const sts = wordsOf(r.w).map(stemOf); if (sts.length && sts.every(st => ws.some(w => w.startsWith(st)))) { const l = sts.join('').length; if (l > bl) { best = r.c; bl = l; } } }
-  return best;
+  const hit = new Set(); // несколько разных категорий — не угадываем, бот спросит
+  for (const r of rules) { if (ok.get(r.c) !== kind) continue; const sts = wordsOf(r.w).map(stemOf); if (sts.length && sts.every(st => ws.some(w => w.startsWith(st)))) hit.add(r.c); }
+  return hit.size === 1 ? [...hit][0] : null;
 }
 async function findDup(env, accId, type, amount, ts, source) {
   const any = source === 'payme'; // скрин Payme может относиться к любой карте: ищем по всем счетам
