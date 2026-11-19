@@ -1028,8 +1028,11 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   }
   // слой с соседней формой ставим ровно на уровень текущей: меряем фактическое положение (отступы первого поля не должны сдвигать его вниз)
   function alignTop(layer, ref) {
-    layer.style.top = (ref ? ref.offsetTop : 0) + 'px'; const f = layer.firstElementChild; if (!ref || !f) return;
-    const d = ref.getBoundingClientRect().top - f.getBoundingClientRect().top; if (Math.abs(d) > 0.5) layer.style.top = (parseFloat(layer.style.top) + d) + 'px';
+    layer.style.top = (ref ? ref.offsetTop : 0) + 'px'; if (!ref) return;
+    // сравниваем одинаковые поля (сумму), а не обёртки: у обёртки отступ первого поля может быть внутри или снаружи
+    const pick = (root) => (root.matches('[data-f=amount]') ? root : root.querySelector('[data-f=amount]')) || (root.classList.contains('txpane') ? root.firstElementChild : root);
+    const r0 = pick(ref), f = pick(layer); if (!r0 || !f) return;
+    const d = r0.getBoundingClientRect().top - f.getBoundingClientRect().top; if (Math.abs(d) > 0.05) layer.style.top = (parseFloat(layer.style.top) + d) + 'px';
   }
   const move = (els, x, dur) => els.forEach(el => { el.style.transition = dur ? `transform ${dur}` : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; });
   const layers = (els, on) => els.forEach(el => { el.style.willChange = on ? 'transform' : ''; });
@@ -1067,10 +1070,12 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
       s0.bs.forEach((b, n) => b.classList.toggle('on', n === s0.j));
       const tb = s0.bs[s0.j]; segPos['ftype:ov'] = { x: tb.offsetLeft, w: tb.offsetWidth, t: TY[s0.j] };
       if (pl) { pl._t = TY[s0.j] + tb.offsetLeft + ':' + tb.offsetWidth; pl.dataset.t = TY[s0.j]; segMove(pl, tb.offsetLeft, tb.offsetWidth, cv); }
-      // клавиатура остаётся как была: если вводили сумму, фокус в том же жесте переходит на сумму новой формы
-      if (typing && !F.id) { const am = nb.querySelector('[data-f=amount]'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
       move(s0.cur, sign * w0, cv); move([nb], 0, cv); haptic();
-      settle = () => { clearTimeout(tm); settle = null; s0.cur.forEach(el => el.remove()); nb.className = 'txpane'; nb.style.cssText = ''; };
+      // фокус не трогаем во время движения: iOS прокручивает окно к полю в фокусе, и формы дёргались.
+      // Клавиатура остаётся как была: когда форма встала на место, фокус переходит на сумму новой формы, и только потом старая убирается
+      settle = () => { clearTimeout(tm); settle = null; nb.className = 'txpane'; nb.style.cssText = '';
+        if (typing && !F.id) { const am = nb.querySelector('[data-f=amount]'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
+        s0.cur.forEach(el => el.remove()); };
       const tm = setTimeout(settle, 320);
     } else {
       const a = s0.bs[s0.i]; if (pl && a) { pl.dataset.t = TY[s0.i]; segMove(pl, a.offsetLeft, a.offsetWidth, cv); }
