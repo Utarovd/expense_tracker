@@ -649,13 +649,13 @@ function txHtml() {
   const cross = isT && fa && ta && fa.currency !== ta.currency;
   return `<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
   <div class="seg tt" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
-  <input class="f amtin amt-${F.type}" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
+  <div class="txpane"><input class="f amtin amt-${F.type}" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
   ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
       : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div><select class="f" data-f="category"><option value="">No category</option>${catOpts}</select>`}
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
   ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${fmtRate(curRate())} (from settings)</div>` : ''}
-  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full save-${F.type}" data-act="txsave">Save</button></div>`;
+  <div style="display:flex;gap:10px">${F.id ? '<button class="btn red" data-act="txdel">Delete</button>' : ''}<button class="btn full save-${F.type}" data-act="txsave">Save</button></div></div>`;
 }
 function drawTx() {
   openSheet(txHtml());
@@ -983,32 +983,33 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   document.addEventListener('touchcancel', off, { passive: true });
   window.addEventListener('scroll', off, { passive: true });
 })();
-// кнопка «×» очистки поля: видна, пока поле в фокусе и в нём есть текст
+// кнопка «×» очистки поля: видна всегда, когда в поле есть текст (у каждого поля своя). Стоит соседом поля и
+// ставится по offsetLeft/offsetTop поля, поэтому едет вместе с формой при свайпе и никогда не «висит» отдельно.
+// Тап по ней очищает поле и сразу открывает клавиатуру.
+const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav');
+function syncClr() {
+  document.querySelectorAll('.clrx').forEach(b => { const el = b.previousElementSibling; if (!clrOk(el) || !el.value || !el.offsetParent) { if (el) el.classList.remove('hasclr', 'clrl'); b.remove(); } });
+  document.querySelectorAll('input').forEach(el => {
+    if (!clrOk(el) || !el.value || !el.offsetParent) return;
+    let b = el.nextElementSibling; if (!b || !b.classList.contains('clrx')) {
+      b = document.createElement('button'); b.type = 'button'; b.className = 'clrx on'; b.setAttribute('aria-label', 'Clear'); b.tabIndex = -1;
+      b.innerHTML = '<i><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></i>'; el.after(b);
+    }
+    if (!el.classList.contains('hasclr')) { el.classList.add('hasclr'); const cs = getComputedStyle(el); const al = cs.textAlign; el.classList.toggle('clrl', al === 'left' || al === 'start' || al === 'justify');
+      const bg = cs.backgroundColor, m = bg.match(/rgba?\(([^)]+)\)/); const pa = m ? m[1].split(',').slice(0, 3).join(',') : '255,255,255';
+      b.style.setProperty('--fb', bg); b.style.setProperty('--fb0', `rgba(${pa},0)`); b.style.borderRadius = `${cs.borderTopLeftRadius} 0 0 ${cs.borderBottomLeftRadius}`; }
+    const L = el.offsetLeft + el.clientLeft + 'px', T = el.offsetTop + el.clientTop + 'px', H = el.clientHeight + 'px';
+    if (b.style.left !== L) b.style.left = L; if (b.style.top !== T) b.style.top = T; if (b.style.height !== H) b.style.height = H;
+  });
+}
 (() => {
-  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'clrx'; btn.setAttribute('aria-label', 'Clear'); btn.tabIndex = -1;
-  btn.innerHTML = '<i><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></i>';
-  let cur = null;
-  const ok = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && el.offsetParent;
-  const place = () => {
-    if (!cur || !cur.isConnected || document.activeElement !== cur || !cur.value) { btn.classList.remove('on'); if (cur) cur.classList.remove('hasclr'); return; }
-    if (btn.previousElementSibling !== cur) cur.after(btn);
-    cur.classList.add('hasclr');
-    const cs = getComputedStyle(cur); const al = cs.textAlign; cur.classList.toggle('clrl', al === 'left' || al === 'start' || al === 'justify');
-    const bg = cs.backgroundColor, m = bg.match(/rgba?\(([^)]+)\)/); const pa = m ? m[1].split(',').slice(0, 3).join(',') : '255,255,255';
-    btn.style.setProperty('--fb', bg); btn.style.setProperty('--fb0', `rgba(${pa},0)`);
-    const bl = parseFloat(cs.borderLeftWidth) || 0, bt = parseFloat(cs.borderTopWidth) || 0, bb = parseFloat(cs.borderBottomWidth) || 0;
-    btn.style.borderRadius = `${cs.borderTopLeftRadius} 0 0 ${cs.borderBottomLeftRadius}`;
-    btn.style.left = '0px'; btn.style.top = '0px'; const o = btn.getBoundingClientRect(), r = cur.getBoundingClientRect();
-    btn.style.height = (r.height - bt - bb) + 'px'; btn.style.left = (r.left + bl - o.left) + 'px'; btn.style.top = (r.top + bt - o.top) + 'px';
-    btn.classList.add('on');
-  };
-  const clear = (e) => { e.preventDefault(); e.stopPropagation(); if (!cur) return; const el = cur; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); const n = el.isConnected ? el : document.activeElement; if (n && n.focus) n.focus({ preventScroll: true }); haptic && haptic(); requestAnimationFrame(place); };
-  btn.addEventListener('touchstart', clear, { passive: false }); btn.addEventListener('mousedown', clear);
-  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-  document.addEventListener('focusin', (e) => { if (cur && cur !== e.target) cur.classList.remove('hasclr'); cur = ok(e.target) ? e.target : null; place(); });
-  document.addEventListener('focusout', () => setTimeout(place, 0));
-  document.addEventListener('input', () => requestAnimationFrame(place));
-  window.addEventListener('resize', () => requestAnimationFrame(place));
+  const clear = (e) => { const b = e.target.closest && e.target.closest('.clrx'); if (!b) return; e.preventDefault(); e.stopPropagation();
+    const el = b.previousElementSibling; if (!el) return; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); el.focus({ preventScroll: true }); if (typeof haptic === 'function') haptic(); syncClr(); };
+  document.addEventListener('touchstart', clear, { passive: false, capture: true }); document.addEventListener('mousedown', clear, true);
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.clrx')) { e.preventDefault(); e.stopPropagation(); } }, true);
+  let q = 0; const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(syncClr); };
+  document.addEventListener('input', later); window.addEventListener('resize', later);
+  new MutationObserver((ms) => { if (ms.some(m => [...m.addedNodes].some(n => n.nodeType === 1 && !(n.classList && n.classList.contains('clrx'))))) later(); }).observe(document.documentElement, { childList: true, subtree: true });
 })();
 // окно «+»: свайп влево/вправо переключает Expense / Income / Transfer; плашка и всё содержимое под ней едут за пальцем синхронно.
 // Плавность: соседние формы строятся при касании (до начала движения) и заранее выносятся в свои слои;
@@ -1022,9 +1023,9 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   const typeF = (ty) => { const g = { ...F, type: ty }; if (ty === 'transfer' && F.type !== 'transfer') { if (F.account) g.from = F.account; if (g.to === g.from) g.to = ''; } else if (F.type === 'transfer' && ty !== 'transfer' && F.from) g.account = F.from; if (ty !== 'transfer') g.category = ''; return g; };
   function preview(ty, x) { // содержимое соседнего типа, стоит за краем шторки и въезжает рядом
     const keep = F; F = typeF(ty); let html; try { html = txHtml(); } finally { F = keep; }
-    const tmp = document.createElement('div'); tmp.innerHTML = html; const nb = document.createElement('div'); nb.className = 'txnb';
-    parts(tmp).forEach(e => nb.appendChild(e)); nb.style.transform = `translateX(${x}px)`; const sh = sheetEl(); const first = parts()[0];
-    sh.appendChild(nb); alignTop(nb, first); return nb;
+    const tmp = document.createElement('div'); tmp.innerHTML = html; const nb = tmp.querySelector('.txpane'); nb.classList.add('txnb');
+    nb.style.transform = `translate3d(${x}px,0,0)`; const sh = sheetEl(); const first = parts()[0];
+    sh.appendChild(nb); alignTop(nb, first); syncClr(); return nb;
   }
   // слой с соседней формой ставим ровно на уровень текущей: меряем фактическое положение (отступы первого поля не должны сдвигать его вниз)
   function alignTop(layer, ref) {
@@ -1073,9 +1074,9 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
       move(s0.cur, sign * w0, cv); move([nb], 0, cv); haptic();
       // фокус не трогаем во время движения: iOS прокручивает окно к полю в фокусе, и формы дёргались.
       // Клавиатура остаётся как была: когда форма встала на место, фокус переходит на сумму новой формы, и только потом старая убирается
-      settle = () => { clearTimeout(tm); settle = null; nb.className = 'txpane'; nb.style.cssText = '';
+      settle = () => { clearTimeout(tm); settle = null; nb.classList.remove('txnb'); nb.style.cssText = '';
         if (typing && !F.id) { const am = nb.querySelector('[data-f=amount]'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
-        s0.cur.forEach(el => el.remove()); };
+        s0.cur.forEach(el => el.remove()); syncClr(); };
       const tm = setTimeout(settle, 320);
     } else {
       const a = s0.bs[s0.i]; if (pl && a) { pl.dataset.t = TY[s0.i]; segMove(pl, a.offsetLeft, a.offsetWidth, cv); }
