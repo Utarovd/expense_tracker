@@ -312,7 +312,7 @@ function segMove(pl, x, w, dur) {
   const sg = pl.parentElement, hi = pl.firstElementChild || segClone(sg, pl);
   pl.style.transition = dur ? `transform ${dur},width ${dur},background .22s ease` : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`;
   if (hi) { hi.style.transition = dur ? `transform ${dur}` : 'none'; hi.style.transform = `translate(${-x}px,${-pl.offsetTop}px)`; }
-  if (sg && sg.classList.contains('tt')) { ttPaint(pl); if (dur) { const t0 = performance.now(); cancelAnimationFrame(pl._raf); const f = () => { ttPaint(pl); if (performance.now() - t0 < 340) pl._raf = requestAnimationFrame(f); }; pl._raf = requestAnimationFrame(f); } }
+  if (sg && sg.classList.contains('tt')) { ttPaint(pl, dur ? undefined : x); if (dur) { const t0 = performance.now(); cancelAnimationFrame(pl._raf); const f = () => { ttPaint(pl); if (performance.now() - t0 < 340) pl._raf = requestAnimationFrame(f); }; pl._raf = requestAnimationFrame(f); } }
 }
 // цвет плашки Expense / Income / Transfer плавно смешивается по положению (в OKLab, как реальный переход цвета)
 const TT = { expense: ['#ff6b6b', '#d1213b', [209, 33, 59]], income: ['#34d399', '#05875f', [5, 135, 95]], transfer: ['#60a5fa', '#1d4ed8', [29, 78, 216]] };
@@ -325,10 +325,12 @@ const mixLab = (c1, c2, f) => { // OKLCH: по цветовому кругу (к
   const [L1, a1, b1] = toLab(c1), [L2, a2, b2] = toLab(c2); const C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2); let h1 = Math.atan2(b1, a1), h2 = Math.atan2(b2, a2);
   let dh = h2 - h1; if (dh > Math.PI) dh -= 2 * Math.PI; if (dh < -Math.PI) dh += 2 * Math.PI;
   const L = L1 + (L2 - L1) * f, C = C1 + (C2 - C1) * f, h = h1 + dh * f; return fromLab([L, C * Math.cos(h), C * Math.sin(h)]); };
-function ttPaint(pl) {
+function ttPaint(pl, x0) {
   const sg = pl.parentElement; const bs = [...sg.querySelectorAll(':scope > button')]; if (bs.length < 2) return;
-  const tf = getComputedStyle(pl).transform; let x = 0; try { x = new DOMMatrixReadOnly(tf === 'none' ? undefined : tf).m41; } catch (_) { x = 0; }
-  const cx = x + pl.offsetWidth / 2; const cs = bs.map(b => b.offsetLeft + b.offsetWidth / 2); const ty = bs.map(b => b.dataset.id);
+  let x = x0; if (x === undefined) { const tf = getComputedStyle(pl).transform; try { x = new DOMMatrixReadOnly(tf === 'none' ? undefined : tf).m41; } catch (_) { x = 0; } }
+  // центры кнопок не меняются во время жеста: считаем один раз, без лишних замеров вёрстки на каждом кадре
+  const key = sg.clientWidth; if (pl._csk !== key) { pl._csk = key; pl._cs = bs.map(b => b.offsetLeft + b.offsetWidth / 2); }
+  const cx = x + parseFloat(pl.style.width || pl.offsetWidth) / 2; const cs = pl._cs; const ty = bs.map(b => b.dataset.id);
   let i = 0; while (i < cs.length - 2 && cx > cs[i + 1]) i++; const f = Math.max(0, Math.min(1, (cx - cs[i]) / ((cs[i + 1] - cs[i]) || 1)));
   const A = TT[ty[i]], B = TT[ty[i + 1]]; if (!A || !B) return;
   const c1 = mixLab(hex2(A[0]), hex2(B[0]), f), c2 = mixLab(hex2(A[1]), hex2(B[1]), f), sh = mixLab(A[2], B[2], f);
@@ -917,6 +919,16 @@ boot();
 
 // доводка после отпускания пальца: начальная скорость анимации = скорость пальца, дальше мягкое торможение (300 мс)
 function flingCurve(remaining, v) { const T = 300; const sp = (Math.sign(remaining) === Math.sign(v) ? Math.abs(v) : 0) * T / Math.max(1, Math.abs(remaining)); const x1 = 0.3, y1 = Math.min(1, sp * x1); return `${T}ms cubic-bezier(${x1},${y1.toFixed(3)},.25,1)`; }
+// «плавно по стандарту» (как в iOS): доводка — критически демпфированная пружина. Старт ровно со скоростью пальца,
+// сразу набирает ход и долго мягко тормозит, без отскока. Кривая передаётся в CSS через linear(), едет на композиторе.
+function springCurve(remaining, v) {
+  const T = 0.3, N = 40; const D = Math.abs(remaining);
+  if (D < 1 || !(window.CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0, 1)'))) return flingCurve(remaining, v);
+  let v0 = (Math.sign(remaining) || 1) * v * 1000 / D; // скорость пальца в долях пути за секунду
+  const w = Math.max(24, v0); v0 = Math.max(v0, -w); const B = w - v0;
+  const pts = []; for (let i = 0; i <= N; i++) { const t = T * i / N; const y = i === N ? 1 : 1 - (1 + B * t) * Math.exp(-w * t); pts.push(+y.toFixed(4)); }
+  return `${T * 1000}ms linear(${pts.join(',')})`;
+}
 const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt = t - st.lt; if (dt > 0) st.v = 0.6 * ((x - st.lx) / dt) + 0.4 * (st.v || 0); } st.lx = x; st.lt = t; };
 // свайпы между разделами: страница едет за пальцем, соседняя въезжает рядом
 (() => {
@@ -998,18 +1010,20 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   document.addEventListener('input', () => requestAnimationFrame(place));
   window.addEventListener('resize', () => requestAnimationFrame(place));
 })();
-// окно «+»: свайп влево/вправо переключает Expense / Income / Transfer; плашка и всё содержимое под ней едут за пальцем синхронно
+// окно «+»: свайп влево/вправо переключает Expense / Income / Transfer; плашка и всё содержимое под ней едут за пальцем синхронно.
+// Плавность: соседние формы строятся при касании (до начала движения) и заранее выносятся в свои слои;
+// во время свайпа и при отпускании ничего не перерисовывается — едут только transform; готовая соседняя форма
+// просто становится настоящей, когда доводка закончилась.
 (() => {
   const TY = ['expense', 'income', 'transfer'];
-  const EASE = '.3s cubic-bezier(.2,.8,.2,1)';
-  let st = null;
+  let st = null, settle = null;
   const parts = (root) => [...(root || sheetEl()).children].filter(e => e.tagName !== 'H2' && !e.classList.contains('seg') && !e.classList.contains('txnb') && !e.classList.contains('clrx') && !e.classList.contains('grab') && !e.classList.contains('shx'));
   const W = () => (sheetEl() ? sheetEl().clientWidth : 360) + 16;
   const typeF = (ty) => { const g = { ...F, type: ty }; if (ty === 'transfer' && F.type !== 'transfer') { if (F.account) g.from = F.account; if (g.to === g.from) g.to = ''; } else if (F.type === 'transfer' && ty !== 'transfer' && F.from) g.account = F.from; if (ty !== 'transfer') g.category = ''; return g; };
-  function preview(ty) { // содержимое соседнего типа, чтобы оно въезжало рядом
+  function preview(ty, x) { // содержимое соседнего типа, стоит за краем шторки и въезжает рядом
     const keep = F; F = typeF(ty); let html; try { html = txHtml(); } finally { F = keep; }
     const tmp = document.createElement('div'); tmp.innerHTML = html; const nb = document.createElement('div'); nb.className = 'txnb';
-    parts(tmp).forEach(e => nb.appendChild(e)); const sh = sheetEl(); const first = parts()[0];
+    parts(tmp).forEach(e => nb.appendChild(e)); nb.style.transform = `translateX(${x}px)`; const sh = sheetEl(); const first = parts()[0];
     sh.appendChild(nb); alignTop(nb, first); return nb;
   }
   // слой с соседней формой ставим ровно на уровень текущей: меряем фактическое положение (отступы первого поля не должны сдвигать его вниз)
@@ -1017,50 +1031,55 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     layer.style.top = (ref ? ref.offsetTop : 0) + 'px'; const f = layer.firstElementChild; if (!ref || !f) return;
     const d = ref.getBoundingClientRect().top - f.getBoundingClientRect().top; if (Math.abs(d) > 0.5) layer.style.top = (parseFloat(layer.style.top) + d) + 'px';
   }
-  const move = (els, x, dur) => els.forEach(el => { el.style.transition = dur ? `transform ${dur}` : 'none'; el.style.transform = x ? `translateX(${x}px)` : ''; });
+  const move = (els, x, dur) => els.forEach(el => { el.style.transition = dur ? `transform ${dur}` : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; });
+  const layers = (els, on) => els.forEach(el => { el.style.willChange = on ? 'transform' : ''; });
+  const drop = (s) => { if (!s) return; Object.values(s.nbs).forEach(n => n.remove()); layers(s.cur, false); s.cur.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); };
   document.addEventListener('touchstart', (e) => {
-    if (st && st.nb) st.nb.remove(); st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
+    if (settle) settle(); drop(st); st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
     const seg = sh.querySelector('.seg.tt'); if (!seg || e.target.closest('input[type=datetime-local],.clrx')) return;
-    const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, i: TY.indexOf(F.type), j: -1, dx: 0, nb: null, k: 0 };
+    const t = e.touches[0]; const i = TY.indexOf(F.type); const bs = [...seg.querySelectorAll(':scope > button')]; const w0 = W();
+    st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, bs, i, j: -1, dx: 0, k: 0, w0, cur: parts(), nbs: {} };
+    layers(st.cur, true);
+    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (b && !b.disabled) st.nbs[j] = preview(TY[j], j > i ? w0 : -w0); });
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
-    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { st = null; return; } }
+    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { drop(st); st = null; return; } }
     e.preventDefault();
-    const j = st.i + (dx < 0 ? 1 : -1); const bs = [...st.seg.querySelectorAll(':scope > button')]; const a = bs[st.i], b = bs[j];
-    const okb = !!(b && !b.disabled);
-    if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = okb ? j : -1; if (okb) st.nb = preview(TY[j]); }
-    st.dx = okb ? dx : 0; trackV(st, st.dx); const w0 = W(); const k = okb ? Math.min(1, Math.abs(dx) / w0) : 0; st.k = k;
+    const j = st.i + (dx < 0 ? 1 : -1); const a = st.bs[st.i], b = st.bs[j]; const nb = st.nbs[j]; const okb = !!nb;
+    st.j = okb ? j : -1; st.dx = okb ? dx : 0; trackV(st, st.dx); const w0 = st.w0; const k = okb ? Math.min(1, Math.abs(dx) / w0) : 0; st.k = k;
+    move(st.cur, st.dx, ''); if (nb) move([nb], st.dx + (dx < 0 ? w0 : -w0), '');
+    const o = st.nbs[st.i + (dx < 0 ? -1 : 1)]; if (o) move([o], dx < 0 ? -w0 : w0, ''); // вторая соседка остаётся за краем
     const pl = st.seg.querySelector(':scope > .segpill'); if (!pl || !a) return;
     const x = a.offsetLeft + ((okb ? b.offsetLeft : a.offsetLeft) - a.offsetLeft) * k, w = a.offsetWidth + ((okb ? b.offsetWidth : a.offsetWidth) - a.offsetWidth) * k;
     st.px = x; st.pw = w; segMove(pl, x, w, ''); pl.dataset.t = TY[okb && k > 0.5 ? j : st.i];
-    move(parts(), st.dx, ''); if (st.nb) move([st.nb], st.dx + (dx < 0 ? w0 : -w0), '');
   }, { passive: false });
   const end = () => {
-    if (!st || st.lock !== 'x') { st = null; return; } const s0 = st; st = null; const w0 = W(); const sign = s0.dx < 0 ? -1 : 1;
+    if (!st || st.lock !== 'x') { drop(st); st = null; return; } const s0 = st; st = null; const w0 = s0.w0; const sign = s0.dx < 0 ? -1 : 1;
     const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const done = s0.j > -1 && (s0.k > 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
-    if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0; const EASE = flingCurve((done ? sign * w0 : 0) - s0.dx, s0.v || 0);
-    const pl = s0.seg.querySelector(':scope > .segpill'); const bs = s0.seg.querySelectorAll(':scope > button');
+    // доводка как у свайпа страниц: стартует со скоростью пальца и мягко тормозит
+    if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0; const cv = springCurve((done ? sign * w0 : 0) - s0.dx, s0.v || 0);
+    const pl = s0.seg.querySelector(':scope > .segpill');
     if (done) {
-      // старое содержимое уезжает «призраком», новое (настоящее, с фокусом на сумме) доезжает с места предпросмотра
-      const sh = sheetEl(); const ghost = document.createElement('div'); ghost.className = 'txnb'; const old = parts();
-      old.forEach(el => { const c = el.cloneNode(true); c.style.transform = ''; c.style.transition = ''; ghost.appendChild(c); });
-      const tgt = bs[s0.j]; segPos['ftype:ov'] = { x: s0.px, w: s0.pw, t: TY[s0.j] };
-      const nbX = s0.dx - sign * w0; if (s0.nb) s0.nb.remove();
-      haptic(); setFType(TY[s0.j]);
-      const sh2 = sheetEl(); const neu = parts(); sh2.appendChild(ghost); alignTop(ghost, neu[0]); move([ghost], s0.dx, ''); move(neu, nbX, '');
-      const pl2 = sh2.querySelector('.seg.tt > .segpill'), b2 = sh2.querySelectorAll('.seg.tt > button')[s0.j];
-      if (pl2 && b2) { pl2._t = TY[s0.j] + b2.offsetLeft + ':' + b2.offsetWidth; pl2.dataset.t = TY[s0.j]; segMove(pl2, s0.px, s0.pw, ''); pl2.style.opacity = 1; }
-      // доводка стартует в том же кадре, что и отпускание (раньше ждали 2 кадра, и форма на миг замирала, а потом резко доезжала)
-      void sh2.offsetWidth;
-      move([ghost], sign * w0, EASE); move(neu, 0, EASE); if (pl2 && b2) segMove(pl2, b2.offsetLeft, b2.offsetWidth, EASE);
-      setTimeout(() => { ghost.remove(); neu.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); }, 320);
+      const nb = s0.nbs[s0.j]; Object.keys(s0.nbs).forEach(k => { if (+k !== s0.j) s0.nbs[k].remove(); });
+      const sh = sheetEl(); const ae = document.activeElement; const typing = ae && sh.contains(ae) && ae.tagName === 'INPUT';
+      F = typeF(TY[s0.j]); // меняем только состояние; разметка уже готова в соседнем слое
+      s0.bs.forEach((b, n) => b.classList.toggle('on', n === s0.j));
+      const tb = s0.bs[s0.j]; segPos['ftype:ov'] = { x: tb.offsetLeft, w: tb.offsetWidth, t: TY[s0.j] };
+      if (pl) { pl._t = TY[s0.j] + tb.offsetLeft + ':' + tb.offsetWidth; pl.dataset.t = TY[s0.j]; segMove(pl, tb.offsetLeft, tb.offsetWidth, cv); }
+      // клавиатура остаётся как была: если вводили сумму, фокус в том же жесте переходит на сумму новой формы
+      if (typing && !F.id) { const am = nb.querySelector('[data-f=amount]'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
+      move(s0.cur, sign * w0, cv); move([nb], 0, cv); haptic();
+      settle = () => { clearTimeout(tm); settle = null; s0.cur.forEach(el => el.remove()); nb.className = 'txpane'; nb.style.cssText = ''; };
+      const tm = setTimeout(settle, 320);
     } else {
-      const a = bs[s0.i]; if (pl && a) { pl.dataset.t = TY[s0.i]; segMove(pl, a.offsetLeft, a.offsetWidth, EASE); }
-      move(parts(), 0, EASE); const nb = s0.nb; if (nb) { move([nb], -sign * w0, EASE); setTimeout(() => nb.remove(), 320); }
+      const a = s0.bs[s0.i]; if (pl && a) { pl.dataset.t = TY[s0.i]; segMove(pl, a.offsetLeft, a.offsetWidth, cv); }
+      move(s0.cur, 0, cv); Object.entries(s0.nbs).forEach(([k, n]) => move([n], +k > s0.i ? w0 : -w0, cv));
+      settle = () => { clearTimeout(tm); settle = null; drop(s0); };
+      const tm = setTimeout(settle, 320);
     }
   };
-  document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', () => { if (st && st.nb) st.nb.remove(); st = null; }, { passive: true });
+  document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', () => { drop(st); st = null; }, { passive: true });
 })();
 
 // нижнее меню: плашку выбранной вкладки можно вести пальцем или мышью; в стиле Liquid Glass она становится линзой
