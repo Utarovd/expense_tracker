@@ -87,6 +87,7 @@ function upsertStmt(env, table, row, ts) {
   return env.DB.prepare(sql).bind(...vals, ts);
 }
 async function sync(env, body) {
+  await migrateCatsV2(env);
   const ts = now();
   const stmts = [];
   for (const t of Object.keys(T)) {
@@ -192,15 +193,91 @@ async function effRate(env, kind) {
 }
 
 // ---------- сид ----------
+// набор по умолчанию для новых пользователей (Doniyor 19.11, для App Store)
 const SEED_CATS = [
-  ['Food', '🍽', ['Lunch', 'Dine out', 'Nutrition', 'Snacks']],
-  ['Leisure', '🎮', ['Friends', 'Date', 'Gaming']],
-  ['Transport', '🚗', ['Gas', 'Fines', 'Public']],
-  ['Expenses', '🧾', ['Bills', 'Community', 'Savings', 'Education', 'Other']],
-  ['Family', '👨‍👩‍👧', ['Groceries', 'Food', 'Nilufar', 'Leisure', 'Expenses', 'Other']],
-  ['Shopping', '🛍', ['Clothes', 'Household', 'Nilufar', 'Technology', 'Other']],
-  ['Health', '💊', ['Sports', 'Hygiene', 'Pharmacy', 'Cosmetic', 'Other']],
+  ['Food', '🍽', ['Groceries', 'Cafes', 'Delivery', 'Coffee & snacks']],
+  ['Home', '🏠', ['Rent', 'Utilities', 'Internet & phone', 'Household', 'Repairs']],
+  ['Transport', '🚗', ['Fuel', 'Taxi', 'Public', 'Car service', 'Parking & fines']],
+  ['Shopping', '🛍', ['Clothes', 'Electronics', 'Home goods']],
+  ['Health', '💊', ['Pharmacy', 'Doctors', 'Sports', 'Beauty']],
+  ['Family & kids', '👨‍👩‍👧', ['Kids', 'Education', 'Pets']],
+  ['Leisure', '🎮', ['Entertainment', 'Travel', 'Hobbies', 'Subscriptions']],
+  ['Gifts & events', '🎁', ['Gifts', 'Weddings & events', 'Charity']],
+  ['Finance', '💳', ['Loans', 'Fees', 'Savings']],
+  ['Other', '🏷', []],
 ];
+const SEED_INCOME = [['Salary', '💰'], ['Business', '💼'], ['Gifts', '🎁'], ['Cashback', '💸'], ['Other income', '➕']];
+
+// ---------- перенос личных категорий после свадьбы (Doniyor 19.11), один раз, только пространство Personal ----------
+// Подкатегории переезжают с тем же id: операции, лимиты, правила слов и «магазин → категория» идут за ними.
+// Ничего не удаляется: убранные подкатегории без операций уходят в архив, с операциями остаются видимыми (о них пишем в бот).
+async function migrateCatsV2(env) {
+  const lock = await env.DB.prepare("INSERT INTO meta(k,v) VALUES('cats_v2','run') ON CONFLICT(k) DO NOTHING").run();
+  if (!lock.meta?.changes) return;
+  try { await doMigrateCatsV2(env); } catch (e) { console.log('cats_v2 failed', e); await env.DB.prepare("DELETE FROM meta WHERE k='cats_v2'").run(); }
+}
+async function doMigrateCatsV2(env) {
+  const sp = await env.DB.prepare("SELECT id FROM spaces WHERE kind='personal' AND deleted_at IS NULL ORDER BY sort LIMIT 1").first();
+  if (!sp) return setMeta(env, 'cats_v2', 'no personal space');
+  const all = (await env.DB.prepare("SELECT * FROM categories WHERE space_id=? AND kind='expense' AND deleted_at IS NULL").bind(sp.id).all()).results;
+  const lc = (x) => String(x || '').trim().toLowerCase();
+  const root = (n) => all.find(c => !c.parent_id && lc(c.name) === lc(n));
+  const sub = (p, n) => p ? all.find(c => c.parent_id === p.id && lc(c.name) === lc(n)) : null;
+  const txCount = async (c) => (await env.DB.prepare('SELECT COUNT(*) n FROM transactions WHERE category_id=? AND deleted_at IS NULL').bind(c.id).first()).n;
+  const ts = now(); const dirty = new Set(); const kept = []; const st = [];
+  const set = (c, ch) => { Object.assign(c, ch); dirty.add(c); return c; };
+  const mk = (parent, name, sort) => { const c = { id: rid(), space_id: sp.id, parent_id: parent ? parent.id : null, name, kind: 'expense', sort, icon: '', archived: 0 }; all.push(c); dirty.add(c); return c; };
+  const old = { food: root('Food'), leisure: root('Leisure'), transport: root('Transport'), expenses: root('Expenses'), family: root('Family'), shopping: root('Shopping'), health: root('Health') };
+  const from = (p, n) => sub(old[p], n);
+  const src = { lunch: from('food', 'Lunch'), dine: from('food', 'Dine out'), snacks: from('food', 'Snacks'), nutr: from('food', 'Nutrition'), bills: from('expenses', 'Bills'),
+    date: from('leisure', 'Date'), pub: from('transport', 'Public'), shopNil: from('shopping', 'Nilufar'), hyg: from('health', 'Hygiene'), cosm: from('health', 'Cosmetic'),
+    household: from('shopping', 'Household'), healthOther: from('health', 'Other'), famGroc: from('family', 'Groceries') };
+  // порядок разделов — ровно как сказал Doniyor
+  const ORDER = ['Home', 'Leisure', 'Transport', 'Expenses', 'Nilufar', 'Family', 'Shopping', 'Health'];
+  const R = {}; ORDER.forEach((n, i) => { const r = root(n); R[n] = r ? set(r, { sort: i, archived: 0 }) : mk(null, n, i); });
+  const LAYOUT = {
+    Home: [['Groceries'], ['Utilities', src.bills], ['Rent'], ['Internet & phone'], ['Lunch', src.lunch], ['Snacks', src.snacks]],
+    Leisure: [['Friends'], ['Gaming'], ['Together', src.date], ['Trips']],
+    Transport: [['Gas'], ['Fines'], ['Car service'], ['Taxi & public', src.pub]],
+    Expenses: [['Community'], ['Savings'], ['Education'], ['Other']],
+    Nilufar: [['Gifts'], ['Shopping', src.shopNil], ['Beauty'], ['Dine out', src.dine]],
+    Shopping: [['Clothes'], ['Technology'], ['Other']],
+    Health: [['Sports'], ['Nutrition', src.nutr], ['Pharmacy'], ['Doctors'], ['Care', src.hyg]],
+  };
+  const placed = new Set();
+  for (const [pn, items] of Object.entries(LAYOUT)) items.forEach(([name, s], j) => {
+    const c = s || sub(R[pn], name);
+    placed.add(c ? set(c, { parent_id: R[pn].id, name, sort: j, archived: 0 }) : mk(R[pn], name, j));
+  });
+  // Cosmetic сливается с Care (Hygiene + Cosmetic, согласовано 19.11)
+  const care = sub(R.Health, 'Care'); let merged = 0;
+  if (src.cosm && care) { merged = await txCount(src.cosm); if (merged) st.push(env.DB.prepare('UPDATE transactions SET category_id=?, updated_at=?, synced_at=? WHERE category_id=? AND deleted_at IS NULL').bind(care.id, ts, ts, src.cosm.id)); set(src.cosm, { archived: 1 }); }
+  // убранные: в архив, если пусто; иначе оставляем в конце раздела и сообщаем
+  for (const [c, label] of [[src.household, 'Shopping › Household'], [src.healthOther, 'Health › Other']]) {
+    if (!c) continue; const n = await txCount(c);
+    if (n) { set(c, { sort: 50 }); kept.push(`${label}: ${n}`); } else set(c, { archived: 1 });
+  }
+  // Food уходит целиком; свои подкатегории, которых нет в списке, не трогаем
+  if (old.food) {
+    const left = all.filter(c => c.parent_id === old.food.id && !placed.has(c));
+    const n = await txCount(old.food);
+    if (!left.length && !n) set(old.food, { archived: 1 }); else { set(old.food, { sort: 8 }); kept.push(`Food: ${n + left.length}`); }
+  }
+  let k = 9; all.filter(c => !c.parent_id && !ORDER.includes(c.name) && c !== old.food && !c.archived).forEach(c => set(c, { sort: k++ }));
+  for (const c of dirty) { c.updated_at = ts; st.push(upsertStmt(env, 'categories', c, ts)); }
+  // правила слов: продукты → Home › Groceries (раньше Family › Groceries); машина вообще → Transport › Car service
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE id='cat_rules' AND deleted_at IS NULL").first();
+  let rules = []; try { rules = JSON.parse(row?.value || '[]') || []; } catch (_) {}
+  const groc = sub(R.Home, 'Groceries'), car = sub(R.Transport, 'Car service'); let moved = 0;
+  rules.forEach(r => { if (src.famGroc && r.c === src.famGroc.id) { r.c = groc.id; moved++; } else if (r.c === R.Transport.id) { r.c = car.id; moved++; } else if (src.cosm && r.c === src.cosm.id) { r.c = care.id; moved++; } });
+  if (moved) st.push(upsertStmt(env, 'settings', { id: 'cat_rules', value: JSON.stringify(rules), updated_at: ts }, ts));
+  for (let i = 0; i < st.length; i += 50) await env.DB.batch(st.slice(i, i + 50));
+  await touch(env);
+  const summary = { at: ts, changed: dirty.size, cosmetic_to_care: merged, rules_moved: moved, kept };
+  await setMeta(env, 'cats_v2', JSON.stringify(summary));
+  const text = `🗂 Categories updated: Home, Leisure, Transport, Expenses, Nilufar, Family, Shopping, Health.` + (merged ? `\n${merged} from Cosmetic moved to Health › Care.` : '') + (kept.length ? `\nStill have operations (left in place, tell where to move): ${kept.join(', ')}.` : '');
+  try { for (const c of await chats(env)) await tgSend(env, c, text); } catch (_) {}
+}
 async function seed(env) {
   const ts = now(); const st = [];
   const sp = { personal: rid(), family: rid() };
@@ -218,9 +295,10 @@ async function seed(env) {
       st.push(insertRow(env, 'categories', { id: pid, space_id: space, parent_id: null, name, kind: 'expense', sort: i, icon, archived: 0, updated_at: ts }));
       subs.forEach((s, j) => st.push(insertRow(env, 'categories', { id: rid(), space_id: space, parent_id: pid, name: s, kind: 'expense', sort: j, icon: '', archived: 0, updated_at: ts })));
     });
-    [['Salary', '💰'], ['Other income', '➕']].forEach(([name, icon], i) =>
+    SEED_INCOME.forEach(([name, icon], i) =>
       st.push(insertRow(env, 'categories', { id: rid(), space_id: space, parent_id: null, name, kind: 'income', sort: 100 + i, icon, archived: 0, updated_at: ts })));
   }
+  st.push(env.DB.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('cats_v2','new user')")); // новому пользователю личный перенос не нужен
   st.push(insertRow(env, 'settings', { id: 'rate_mode', value: 'auto', updated_at: ts }));
   st.push(insertRow(env, 'settings', { id: 'rate_kind', value: 'buy', updated_at: ts }));
   for (let i = 0; i < st.length; i += 50) await env.DB.batch(st.slice(i, i + 50));

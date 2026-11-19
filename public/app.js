@@ -104,16 +104,15 @@ function ruleCat(text, kind) {
     if (sts.every(st => ws.some(w => w.startsWith(st)))) hit.add(r.c); });
   return hit.size === 1 ? [...hit][0] : null;
 }
-// стартовые правила по словам Doniyor (19.11): компы → Gaming; снеки → Snacks; блюда и фастфуд → Dine out; продукты и закупки → Family › Groceries.
+// стартовые правила для набора по умолчанию (новые пользователи): компы → Gaming; снеки → Coffee & snacks; блюда и фастфуд → Cafes; продукты → Food › Groceries; машина → Transport.
 // Добавляются один раз (метка cat_rules_seed), уже существующие слова не трогаем
 const SEED = [['Leisure', 'Gaming', ['компы']],
-  ['Food', 'Snacks', ['снеки', 'чипсы', 'сникерс', 'шоколад', 'печенье', 'snacks']],
-  ['Food', 'Dine out', ['плов', 'шаурма', 'бургер', 'пицца', 'суши', 'лагман', 'самса', 'шашлык', 'манты', 'кебаб', 'донер', 'лаваш', 'хотдог', 'кафе', 'ресторан', 'burger', 'pizza', 'kfc', 'evos', 'oqtepa']],
-  ['Family', 'Groceries', ['продукты', 'корзинка', 'korzinka', 'базар', 'bozor', 'макро', 'makro', 'havas', 'супермаркет']],
-  // машина: бензин → Gas, штрафы → Fines, остальное про машину — сам Transport
-  ['Transport', 'Gas', ['бензин', 'заправка', 'топливо', 'метан', 'пропан', 'benzin', 'yoqilg\'i', 'gas']],
-  ['Transport', 'Fines', ['штраф', 'jarima']],
-  ['Transport', '', ['мойка', 'автомойка', 'шиномонтаж', 'парковка', 'стоянка', 'запчасти', 'автосервис', 'техосмотр', 'страховка', 'машина', 'avto', 'moyka']]];
+  ['Food', 'Coffee & snacks', ['снеки', 'чипсы', 'сникерс', 'шоколад', 'печенье', 'snacks', 'кофе', 'coffee']],
+  ['Food', 'Cafes', ['плов', 'шаурма', 'бургер', 'пицца', 'суши', 'лагман', 'самса', 'шашлык', 'манты', 'кебаб', 'донер', 'лаваш', 'хотдог', 'кафе', 'ресторан', 'burger', 'pizza', 'kfc', 'evos', 'oqtepa']],
+  ['Food', 'Groceries', ['продукты', 'корзинка', 'korzinka', 'базар', 'bozor', 'макро', 'makro', 'havas', 'супермаркет']],
+  ['Transport', 'Fuel', ['бензин', 'заправка', 'топливо', 'метан', 'пропан', 'benzin', 'yoqilg\'i', 'gas']],
+  ['Transport', 'Parking & fines', ['штраф', 'jarima', 'парковка', 'стоянка']],
+  ['Transport', 'Car service', ['мойка', 'автомойка', 'шиномонтаж', 'запчасти', 'автосервис', 'техосмотр', 'страховка', 'машина', 'avto', 'moyka']]];
 function seedRules() {
   if (setting('cat_rules_seed', '') === '3') return; const ex = cats('expense'); if (!ex.length) return;
   const r = rules(); const have = new Set(r.map(x => x.w)); let n = 0;
@@ -201,12 +200,15 @@ const IC = {
   grip: 'M5 8h14M5 12h14M5 16h14',
   eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   eyeoff: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 4l16 16',
+  ring: 'M12 21a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM9.6 9.5 7.5 6l2-2.5h5l2 2.5-2.1 3.5M7.5 6h9',
+  gift: 'M3.5 8.5h17v4h-17zM5 12.5V20h14v-7.5M12 8.5V20M12 8.5S10.6 4 8.3 4.6C6.6 5 7 8.5 12 8.5zM12 8.5s1.4-4.5 3.7-3.9C17.4 5 17 8.5 12 8.5z',
   tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
   ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
 };
 const svg = (n, sz = 22) => `<svg class="i i-${n}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
-const CATIC = { food: 'food', leisure: 'game', transport: 'car', expenses: 'receipt', family: 'family', shopping: 'bag', health: 'heart', salary: 'wallet', 'other income': 'plus' };
+const CATIC = { food: 'food', home: 'home', leisure: 'game', transport: 'car', expenses: 'receipt', nilufar: 'ring', family: 'family', 'family & kids': 'family', shopping: 'bag', health: 'heart',
+  'gifts & events': 'gift', finance: 'card', other: 'tag', salary: 'wallet', business: 'bag', gifts: 'gift', cashback: 'rate', 'other income': 'plus' };
 const rootIcon = (r, sz) => !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
 const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
 const catIcon = (id) => rootIcon(rootOf(id));
