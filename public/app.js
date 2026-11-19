@@ -258,6 +258,17 @@ window.addEventListener('popstate', () => { slideDir = ''; closeSheet(); S.route
 const ICN = {};
 function keepIcons() { document.querySelectorAll('#app .icpick img').forEach(im => { const k = im.getAttribute('src'); const c = ICN[k]; if (c && c !== im) im.replaceWith(c); else if (!c) ICN[k] = im; }); }
 let lastRoute = null;
+// переход тапом по вкладке: как при свайпе, старая страница уезжает в сторону, новая въезжает рядом (300 мс, мягкое торможение)
+let pgAnim = null;
+function slidePages(oldPg, box, sign) {
+  const W = Math.min(window.innerWidth, 560) + 16, cv = 'transform 300ms cubic-bezier(.2,.8,.2,1)';
+  const gh = document.createElement('div'); gh.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;z-index:15;pointer-events:none;will-change:transform`;
+  oldPg.style.transition = ''; oldPg.style.transform = ''; gh.appendChild(oldPg); document.body.appendChild(gh);
+  const nw = $app.firstElementChild; nw.style.transition = 'none'; nw.style.transform = `translateX(${-sign * W}px)`;
+  void nw.offsetWidth; gh.style.transition = cv; gh.style.transform = `translateX(${sign * W}px)`; nw.style.transition = cv; nw.style.transform = 'translateX(0)';
+  const fin = () => { clearTimeout(tm); gh.remove(); if (nw.isConnected) { nw.style.transition = ''; nw.style.transform = ''; } if (pgAnim === fin) pgAnim = null; };
+  const tm = setTimeout(fin, 320); pgAnim = fin;
+}
 function render(soft) {
   if (!S.user) { if (S.route !== '/login') { S.route = '/login'; history.replaceState({}, '', '/login'); } return renderLogin(); }
   if (S.route === '/login') { S.route = '/'; history.replaceState({}, '', '/'); }
@@ -269,8 +280,12 @@ function render(soft) {
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
   if (keep) return; // не перерисовываем поверх вводимого текста
   { const op = document.querySelector('.navpill'), nv = op && op.offsetParent; if (op && nv && S.pill) { const r1 = op.getBoundingClientRect(), r0 = nv.getBoundingClientRect(); S.pill = { x: r1.left - r0.left - nv.clientLeft, y: S.pill.y, w: r1.width, h: S.pill.h }; } }
-  $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
+  if (pgAnim) pgAnim(); // быстрые тапы: предыдущий переход сразу завершаем, ничего не копится
+  const slide = lastRoute !== null && lastRoute !== r && !soft && slideDir && MAIN.includes(lastRoute) && MAIN.includes(r);
+  const oldPg = slide ? $app.firstElementChild : null, oldBox = oldPg && oldPg.getBoundingClientRect();
+  $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft && !slide ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
+  if (oldPg) slidePages(oldPg, oldBox, slideDir === 'pg-next' ? -1 : 1);
   keepIcons();
   placePill();
   animateBalance();
