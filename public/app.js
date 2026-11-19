@@ -158,24 +158,24 @@ function openCatPicker(btn) {
   });
   // свайп вниз: шторка едет за пальцем, когда список вверху; отпускание — пружина со скоростью пальца
   let st = null;
-  pp.addEventListener('touchstart', (e) => { if (e.touches.length !== 1) { st = null; return; } const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, on: false, dy: 0, t0: Date.now() }; }, { passive: true });
+  pp.addEventListener('touchstart', (e) => { if (e.touches.length !== 1) { st = null; return; } const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, on: false, dy: 0, t0: Date.now() }; pp.style.willChange = 'transform'; }, { passive: true });
   pp.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
     if (!st.on) {
       const inList = list.contains(e.target);
       if (dy > 8 && dy > Math.abs(dx) * 1.2 && (!inList || list.scrollTop <= 0)) { st.on = true; st.y = t.clientY; pp.style.transition = 'none'; }
       else if (Math.abs(dx) > 10 || dy < -8 || (dy > 8 && inList && list.scrollTop > 0)) { st = null; return; }
-      else return;
+      else { if (dy > 0 && dy >= Math.abs(dx) && (!inList || list.scrollTop <= 0) && e.cancelable) e.preventDefault(); return; }
     }
     const d = Math.max(0, t.clientY - st.y); st.dy = d; trackV(st, d); if (e.cancelable) e.preventDefault();
-    pp.style.transform = `translate3d(0,${d}px,0)`;
+    pp.style.transform = `translate3d(0,${d}px,0)`; el.style.setProperty('--dim', String(Math.max(0.2, 1 - d / 500))); // фон светлеет за пальцем, как у других шторок
   }, { passive: false });
   const end = () => {
-    if (!st) return; const s2 = st; st = null; if (!s2.on) return;
-    if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const v = s2.v || 0, H = pp.offsetHeight + 40;
-    if (s2.dy > 110 || v > 0.6) return close(springCurve(H - s2.dy, v));
+    if (!st) return; const s2 = st; st = null; if (!s2.on) { pp.style.willChange = ''; return; }
+    if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const v = s2.v || 0, H = pp.offsetHeight + 40; el.style.setProperty('--dimt', '.3s'); el.style.setProperty('--dim', '1');
+    if (flingDone(s2.dy, v, 110)) return close(springCurve(H - s2.dy, v));
     pp.style.transition = 'transform ' + springCurve(-s2.dy, v); pp.style.transform = 'translate3d(0,0,0)';
-    setTimeout(() => { if (!gone) { pp.style.transition = ''; pp.style.transform = ''; } }, 320);
+    setTimeout(() => { if (!gone) { pp.style.transition = ''; pp.style.transform = ''; pp.style.willChange = ''; el.style.removeProperty('--dimt'); } }, 320);
   };
   pp.addEventListener('touchend', end); pp.addEventListener('touchcancel', end);
   // список открывается на разделе выбранной категории (заголовок раздела виден целиком)
@@ -376,9 +376,9 @@ function slidePages(oldPg, box, sign) {
   const W = Math.min(window.innerWidth, 560) + 16, cv = 'transform ' + springCurve(W, 0);
   const gh = document.createElement('div'); gh.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;z-index:15;pointer-events:none;will-change:transform`;
   oldPg.style.transition = ''; oldPg.style.transform = ''; gh.appendChild(oldPg); document.body.appendChild(gh);
-  const nw = $app.firstElementChild; nw.style.transition = 'none'; nw.style.transform = `translateX(${-sign * W}px)`;
-  void nw.offsetWidth; gh.style.transition = cv; gh.style.transform = `translateX(${sign * W}px)`; nw.style.transition = cv; nw.style.transform = 'translateX(0)';
-  const fin = () => { clearTimeout(tm); gh.remove(); if (nw.isConnected) { nw.style.transition = ''; nw.style.transform = ''; } if (pgAnim === fin) pgAnim = null; };
+  const nw = $app.firstElementChild; nw.style.transition = 'none'; nw.style.willChange = 'transform'; nw.style.transform = `translate3d(${-sign * W}px,0,0)`;
+  void nw.offsetWidth; gh.style.transition = cv; gh.style.transform = `translate3d(${sign * W}px,0,0)`; nw.style.transition = cv; nw.style.transform = 'translate3d(0,0,0)';
+  const fin = () => { clearTimeout(tm); gh.remove(); if (nw.isConnected) { nw.style.transition = ''; nw.style.transform = ''; nw.style.willChange = ''; } if (pgAnim === fin) pgAnim = null; };
   const tm = setTimeout(fin, 320); pgAnim = fin;
 }
 function render(soft) {
@@ -420,7 +420,7 @@ function segClone(sg, pl) {
 function segMove(pl, x, w, dur) {
   const sg = pl.parentElement, hi = pl.firstElementChild || segClone(sg, pl);
   pl.style.transition = dur ? `transform ${dur},width ${dur},background .22s ease` : 'none'; pl.style.width = w + 'px'; pl.style.transform = `translateX(${x}px)`;
-  if (hi) { hi.style.transition = dur ? `transform ${dur}` : 'none'; hi.style.transform = `translate(${-x}px,${-pl.offsetTop}px)`; }
+  if (hi) { hi.style.transition = dur ? `transform ${dur}` : 'none'; if (pl._ot == null || dur) pl._ot = pl.offsetTop; hi.style.transform = `translate(${-x}px,${-pl._ot}px)`; }
   if (sg && sg.classList.contains('tt')) { ttPaint(pl, dur ? undefined : x); if (dur) { const t0 = performance.now(); cancelAnimationFrame(pl._raf); const f = () => { ttPaint(pl); if (performance.now() - t0 < 340) pl._raf = requestAnimationFrame(f); }; pl._raf = requestAnimationFrame(f); } }
 }
 // цвет плашки Expense / Income / Transfer плавно смешивается по положению (в OKLab, как реальный переход цвета)
@@ -438,7 +438,7 @@ function ttPaint(pl, x0) {
   const sg = pl.parentElement; const bs = [...sg.querySelectorAll(':scope > button')]; if (bs.length < 2) return;
   let x = x0; if (x === undefined) { const tf = getComputedStyle(pl).transform; try { x = new DOMMatrixReadOnly(tf === 'none' ? undefined : tf).m41; } catch (_) { x = 0; } }
   // центры кнопок не меняются во время жеста: считаем один раз, без лишних замеров вёрстки на каждом кадре
-  const key = sg.clientWidth; if (pl._csk !== key) { pl._csk = key; pl._cs = bs.map(b => b.offsetLeft + b.offsetWidth / 2); }
+  const key = pillText.k; if (pl._csk !== key || !pl._cs) { pl._csk = key; pl._cs = bs.map(b => b.offsetLeft + b.offsetWidth / 2); }
   const cx = x + parseFloat(pl.style.width || pl.offsetWidth) / 2; const cs = pl._cs; const ty = bs.map(b => b.dataset.id);
   let i = 0; while (i < cs.length - 2 && cx > cs[i + 1]) i++; const f = Math.max(0, Math.min(1, (cx - cs[i]) / ((cs[i + 1] - cs[i]) || 1)));
   const A = TT[ty[i]], B = TT[ty[i + 1]]; if (!A || !B) return;
@@ -468,9 +468,10 @@ const tabBox = (path) => { const a = document.querySelector(`.nav a[data-go="${p
 // белый текст внутри плашки: копия меню внутри плашки, сдвинутая обратно, поэтому текст делится ровно по краю плашки
 function pillText(el, x, y, tr) {
   const hi = el.firstElementChild, box = el.parentElement; if (!hi || !box) return;
-  const cs = getComputedStyle(box); hi.style.width = box.clientWidth + 'px'; hi.style.height = box.clientHeight + 'px'; hi.style.padding = cs.padding;
+  if (hi._k !== pillText.k) { hi._k = pillText.k; const cs = getComputedStyle(box); hi.style.width = box.clientWidth + 'px'; hi.style.height = box.clientHeight + 'px'; hi.style.padding = cs.padding; } // размеры меню меряем один раз, не на каждом кадре
   hi.style.transition = tr; hi.style.transform = `translate(${-x}px,${-y}px)`;
 }
+pillText.k = 1; window.addEventListener('resize', () => { pillText.k++; });
 function setPill(b, anim) {
   const el = document.querySelector('.navpill'); if (!el || !b) return;
   const cv = typeof anim === 'string' ? anim : '.22s cubic-bezier(.4,0,.2,1)';
@@ -1065,6 +1066,8 @@ function springCurve(remaining, v) {
   const pts = []; for (let i = 0; i <= N; i++) { const t = T * i / N; const y = i === N ? 1 : 1 - (1 + B * t) * Math.exp(-w * t); pts.push(+y.toFixed(4)); }
   return `${T * 1000}ms linear(${pts.join(',')})`;
 }
+// решение при отпускании как в iOS: позиция + бросок по скорости пальца (160 мс вперёд); бросок назад отменяет
+const flingDone = (d, v, lim) => { const p = d + v * 160; return Math.abs(p) > lim && Math.sign(p) === Math.sign(d) && !(Math.sign(d) * v < -0.15); };
 const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt = t - st.lt; if (dt > 0) st.v = 0.6 * ((x - st.lx) / dt) + 0.4 * (st.v || 0); } st.lx = x; st.lt = t; };
 // свайпы между разделами: страница едет за пальцем, соседняя въезжает рядом
 (() => {
@@ -1094,21 +1097,24 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
-    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { cleanup(); return; } }
-    e.preventDefault();
+    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { cleanup(); return; }
+      st.x0 = t.clientX - Math.sign(dx) * 0.01; st.tb = {}; } // страница трогается с места без скачка на «мёртвую зону» 8 px
+    e.preventDefault(); return moveX(t);
+  }, { passive: false });
+  function moveX(t) { const dx = t.clientX - st.x0;
     // на вложенной странице Profile свайп вправо возвращает в Profile, влево некуда
     const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf('/more') : -1) : i + (dx < 0 ? 1 : -1);
     st.j = pre.els[j] ? j : -1; st.nb = pre.els[j] || null; st.dx = st.nb ? dx : 0; trackV(st, st.dx);
     mv(cur(), st.dx, ''); if (st.nb) mv(st.nb, st.dx + (dx < 0 ? W() + 16 : -W() - 16), '');
     const o = pre.els[sub ? -1 : i + (dx < 0 ? -1 : 1)]; if (o) mv(o, off(sub ? -1 : i + (dx < 0 ? -1 : 1), sub ? MAIN.length : i), '');
-    const pa = tabBox(S.route), pb = st.nb ? tabBox(MAIN[j]) : null;
-    if (pa && pb) { const k = Math.min(1, Math.abs(st.dx) / W()); setPill({ x: pa.x + (pb.x - pa.x) * k, y: pa.y, w: pa.w + (pb.w - pa.w) * k, h: pa.h }, false); onTab(k > 0.5 ? MAIN[j] : S.route); }
-  }, { passive: false });
+    const tbx = (k) => k in st.tb ? st.tb[k] : (st.tb[k] = tabBox(k)); const pa = tbx(S.route), pb = st.nb ? tbx(MAIN[j]) : null;
+    if (pa && pb) { const k = Math.min(1, Math.abs(st.dx) / W()); setPill({ x: pa.x + (pb.x - pa.x) * k, y: pa.y, w: pa.w + (pb.w - pa.w) * k, h: pa.h }, false); const ot = k > 0.5 ? MAIN[j] : S.route; if (st.ot !== ot) { st.ot = ot; onTab(ot); } }
+  }
   function end() {
     if (!st || st.lock !== 'x') { cleanup(); return; }
-    const s0 = st; st = null; const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const c = cur();
-    const done = s0.nb && (Math.abs(s0.dx) > W() * 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
+    const s0 = st; st = null; const c = cur();
     const sign = s0.dx < 0 ? -1 : 1; if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0;
+    const done = !!s0.nb && flingDone(s0.dx, s0.v || 0, W() * 0.3);
     const cv = springCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0);
     mv(c, done ? sign * (W() + 16) : 0, cv); if (s0.nb) mv(s0.nb, done ? 0 : -sign * (W() + 16), cv);
     const here = MAIN.includes(S.route) ? S.route : '/more'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
@@ -1198,27 +1204,30 @@ function syncClr() {
     if (settle) settle(); drop(st); st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
     const seg = sh.querySelector('.seg.tt'); if (!seg || e.target.closest('input[type=datetime-local],.clrx')) return;
     const t = e.touches[0]; const i = TY.indexOf(F.type); const bs = [...seg.querySelectorAll(':scope > button')]; const w0 = W();
-    st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, bs, i, j: -1, dx: 0, k: 0, w0, cur: parts(), nbs: {} };
+    st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, bs, bx: bs.map(b => [b.offsetLeft, b.offsetWidth]), i, j: -1, dx: 0, k: 0, w0, cur: parts(), nbs: {} };
     layers(st.cur, true);
     [i - 1, i + 1].forEach(j => { const b = bs[j]; if (b && !b.disabled) st.nbs[j] = preview(TY[j], j > i ? w0 : -w0); });
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
-    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { drop(st); st = null; return; } }
-    e.preventDefault();
+    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { drop(st); st = null; return; }
+      st.x0 = t.clientX - Math.sign(dx) * 0.01; } // без скачка на «мёртвую зону»
+    e.preventDefault(); return moveX(t);
+  }, { passive: false });
+  function moveX(t) { const dx = t.clientX - st.x0;
     const j = st.i + (dx < 0 ? 1 : -1); const a = st.bs[st.i], b = st.bs[j]; const nb = st.nbs[j]; const okb = !!nb;
     st.j = okb ? j : -1; st.dx = okb ? dx : 0; trackV(st, st.dx); const w0 = st.w0; const k = okb ? Math.min(1, Math.abs(dx) / w0) : 0; st.k = k;
     move(st.cur, st.dx, ''); if (nb) move([nb], st.dx + (dx < 0 ? w0 : -w0), '');
     const o = st.nbs[st.i + (dx < 0 ? -1 : 1)]; if (o) move([o], dx < 0 ? -w0 : w0, ''); // вторая соседка остаётся за краем
     const pl = st.seg.querySelector(':scope > .segpill'); if (!pl || !a) return;
-    const x = a.offsetLeft + ((okb ? b.offsetLeft : a.offsetLeft) - a.offsetLeft) * k, w = a.offsetWidth + ((okb ? b.offsetWidth : a.offsetWidth) - a.offsetWidth) * k;
-    st.px = x; st.pw = w; segMove(pl, x, w, ''); pl.dataset.t = TY[okb && k > 0.5 ? j : st.i];
-  }, { passive: false });
+    const A = st.bx[st.i], B = okb ? st.bx[j] : A; const x = A[0] + (B[0] - A[0]) * k, w = A[1] + (B[1] - A[1]) * k;
+    st.px = x; st.pw = w; segMove(pl, x, w, ''); const ty = TY[okb && k > 0.5 ? j : st.i]; if (pl.dataset.t !== ty) pl.dataset.t = ty;
+  }
   const end = () => {
     if (!st || st.lock !== 'x') { drop(st); st = null; return; } const s0 = st; st = null; const w0 = s0.w0; const sign = s0.dx < 0 ? -1 : 1;
-    const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const done = s0.j > -1 && (s0.k > 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
+    if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0; const done = s0.j > -1 && flingDone(s0.dx, s0.v || 0, w0 * 0.3);
     // доводка как у свайпа страниц: стартует со скоростью пальца и мягко тормозит
-    if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0; const cv = springCurve((done ? sign * w0 : 0) - s0.dx, s0.v || 0);
+    const cv = springCurve((done ? sign * w0 : 0) - s0.dx, s0.v || 0);
     const pl = s0.seg.querySelector(':scope > .segpill');
     if (done) {
       const nb = s0.nbs[s0.j]; Object.keys(s0.nbs).forEach(k => { if (+k !== s0.j) s0.nbs[k].remove(); });
@@ -1295,27 +1304,27 @@ document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target
   document.addEventListener('touchstart', (e) => {
     const sh = sheetEl(); if (!sh || !sh.contains(e.target) || e.touches.length !== 1) { st = null; return; }
     const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, t0: Date.now(), on: false, dy: 0, top: sh.scrollTop <= 0 && grabSeen(sh) };
-    if (!st.top) st = null; // шторка прокручена (или страница уехала под клавиатуру): свайп вниз просто листает вверх
+    if (!st.top) st = null; else sh.style.willChange = 'transform'; // слой готов до начала движения // шторка прокручена (или страница уехала под клавиатуру): свайп вниз просто листает вверх
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st || !ovEl) return; const sh = sheetEl(); const t = e.touches[0]; const dx = t.clientX - st.x, dy = t.clientY - st.y;
     if (!st.on) {
       if (!st.top && sh.scrollTop > 0) { st = null; return; }
       if (dy > 8 && dy > Math.abs(dx) * 1.2 && sh.scrollTop <= 0 && grabSeen(sh)) { st.on = true; st.y = t.clientY - 0; st.dy = 0; sh.style.transition = 'none'; }
-      else if (Math.abs(dx) > 10 || dy < -8) { st = null; return; }
-      else return;
+      else if (Math.abs(dx) > 10 || dy < -8) { sh.style.willChange = ''; st = null; return; }
+      else { if (dy > 0 && dy >= Math.abs(dx) && e.cancelable) e.preventDefault(); return; } // вниз от верха: iOS не начинает свою прокрутку-резинку, шторка трогается ровно
     }
     const d = Math.max(0, t.clientY - st.y); st.dy = d; trackV(st, d); if (e.cancelable) e.preventDefault();
     sh.style.transform = `translate3d(0,${d}px,0)`; ovEl.style.opacity = String(Math.max(0.2, 1 - d / 500));
   }, { passive: false });
   const end = () => {
-    if (!st) return; const s2 = st; st = null; if (!s2.on || !ovEl) return;
-    const sh = sheetEl(), ov = ovEl; const v = s2.dy / Math.max(1, Date.now() - s2.t0);
+    if (!st) return; const s2 = st; st = null; { const s = sheetEl(); if (s && !s2.on) s.style.willChange = ''; } if (!s2.on || !ovEl) return;
+    const sh = sheetEl(), ov = ovEl;
     // доводка пружиной со скоростью пальца: закрытие — вниз до конца, иначе мягко обратно
-    if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const H = sh.offsetHeight + 40; const close = s2.dy > 110 || v > 0.6;
+    if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const H = sh.offsetHeight + 40; const close = flingDone(s2.dy, s2.v || 0, 110);
     const cv = springCurve((close ? H : 0) - s2.dy, s2.v || 0); sh.style.transition = 'transform ' + cv; ov.style.opacity = '';
     if (close) { sh.style.transform = `translate3d(0,${H}px,0)`; closeSheet(); }
-    else { sh.style.transform = 'translate3d(0,0,0)'; setTimeout(() => { if (sheetEl() === sh) { sh.style.transition = ''; sh.style.transform = ''; } }, 320); }
+    else { sh.style.transform = 'translate3d(0,0,0)'; setTimeout(() => { if (sheetEl() === sh) { sh.style.transition = ''; sh.style.transform = ''; sh.style.willChange = ''; } }, 320); }
   };
   document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
 })();

@@ -411,7 +411,8 @@ html.vt-theme::view-transition-group(root){animation-duration:.3s}
 /* выбор категории: поле и своя шторка (заголовок раздела 20 px — вариант B, Doniyor 19.11) */
 button.catf{display:block;width:100%;border:0;background:var(--bg);color:var(--tx);border-radius:12px;padding:12px;margin:4px 0 12px;font:inherit;text-align:left;cursor:pointer}
 button.catf.none{color:var(--mut)}
-.cp{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4);opacity:0;transition:opacity .25s ease}
+.cp{position:fixed;inset:0;z-index:70;opacity:0;transition:opacity .25s ease}
+.cp::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.4);opacity:var(--dim,1);transition:opacity var(--dimt,0s) ease;pointer-events:none} /* фон шторки категорий светлеет за пальцем (только opacity) */
 .cp.on{opacity:1}
 .cpp{position:absolute;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--card);border-radius:26px 26px 0 0;display:flex;flex-direction:column;max-height:84vh;padding:16px 16px 0;transform:translate3d(0,100%,0);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .cp.on .cpp{transform:none}
