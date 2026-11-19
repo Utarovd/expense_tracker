@@ -1011,7 +1011,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 // кнопка «×» очистки поля: видна всегда, когда в поле есть текст (у каждого поля своя). Стоит соседом поля и
 // ставится по offsetLeft/offsetTop поля, поэтому едет вместе с формой при свайпе и никогда не «висит» отдельно.
 // Тап по ней очищает поле и сразу открывает клавиатуру.
-const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav') && !['qa', 'lg', 'pw'].includes(el.id); // без «×»: Quick и вход
+const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav') && !['qa', 'lg', 'pw'].includes(el.id) && el.dataset.f !== 'note'; // без «×»: Quick, вход и Note
 function syncClr() {
   document.querySelectorAll('.clrx').forEach(b => { const el = b.previousElementSibling; if (!clrOk(el) || !el.value || !el.offsetParent) { if (el) el.classList.remove('hasclr', 'clrl'); b.remove(); } });
   document.querySelectorAll('input').forEach(el => {
