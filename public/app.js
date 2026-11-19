@@ -122,7 +122,7 @@ function seedRules() {
 const catLabel = (id) => { const c = byId('categories', id); if (!c) return '—'; const p = c.parent_id && byId('categories', c.parent_id); return (p ? p.name + ' › ' : '') + c.name; };
 // ---------- выбор категории: своя шторка поверх окна (в стандартном списке iOS заголовки разделов не настроить) ----------
 // Разделы — раскрывающиеся списки (заголовок 20 px, стрелка поворачивается, список плавно раскрывается и сворачивается).
-// Раздел без подкатегории выбирается первой строкой «All <Раздел>» в раскрытом списке; раздел без подкатегорий — тапом по заголовку.
+// Заголовок раздела только раскрывает список: раздел без подкатегории не выбирается (Doniyor 19.11); раздел совсем без подкатегорий выбирается тапом.
 // В поле показывается «Раздел › Подкатегория». Шторка закрывается свайпом вниз, когда список не прокручен.
 function catField(key, val, kind) { return `<button type="button" class="f catf${val ? '' : ' none'}" data-act="catpick" data-cf="${key}" data-kind="${kind}">${val ? esc(catLabel(val)) : 'No category'}</button>`; }
 function setCatField(btn, id) { btn.textContent = id ? catLabel(id) : 'No category'; btn.classList.toggle('none', !id); }
@@ -133,7 +133,7 @@ function openCatPicker(btn) {
     const subs = cats(k).filter(c => c.parent_id === p.id && !c.archived); const open = p.id === cur || subs.some(c => c.id === cur);
     if (!subs.length) return `<div class="cps"><div class="cph${p.id === cur ? ' sel' : ''}" data-cid="${p.id}"><span class="ico sm">${rootIcon(p, 18)}</span><span class="grow">${esc(p.name)}</span>${ck(p.id)}</div></div>`;
     return `<div class="cps${open ? ' open' : ''}"><div class="cph${open ? ' sel' : ''}" data-tog><span class="ico sm">${rootIcon(p, 18)}</span><span class="grow">${esc(p.name)}</span><svg class="cpa" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>`
-      + `<div class="cpb"><div class="cpbi"><div class="cpi${p.id === cur ? ' sel' : ''}" data-cid="${p.id}"><span class="grow">All ${esc(p.name)}</span>${ck(p.id)}</div>${subs.map(c => `<div class="cpi${c.id === cur ? ' sel' : ''}" data-cid="${c.id}"><span class="grow">${esc(c.name)}</span>${ck(c.id)}</div>`).join('')}</div></div></div>`;
+      + `<div class="cpb"><div class="cpbi">${subs.map(c => `<div class="cpi${c.id === cur ? ' sel' : ''}" data-cid="${c.id}"><span class="grow">${esc(c.name)}</span>${ck(c.id)}</div>`).join('')}</div></div></div>`;
   };
   const body = kinds.map(k => cats(k).filter(c => !c.parent_id && !c.archived).map(p => sec(p, k)).join('')).join('');
   const el = document.createElement('div'); el.className = 'cp';
