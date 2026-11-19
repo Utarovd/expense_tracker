@@ -326,6 +326,8 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{transit
 :root[data-theme=dark]{--hov:rgba(255,255,255,.08);--hovring:rgba(245,197,24,.5)}
 .row[data-act],.row[data-go],.legend[data-act]{position:relative;isolation:isolate}
 .row[data-act]::before,.row[data-go]::before,.legend[data-act]::before{content:"";position:absolute;top:2px;bottom:2px;left:-10px;right:-10px;border-radius:12px;background:var(--hov);opacity:0;z-index:-1;pointer-events:none;transition:opacity .25s ease}
+.row.rtop::before{top:-10px} /* строка раздела без верхнего отступа: подсветка с тем же запасом 10 px вокруг иконки */
+.legend[data-act]::before{top:0;bottom:0;left:0;right:0;border-radius:10px} /* у строки легенды свои отступы 8 px: подсветка = её рамка, как у выбранной */
 .btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go]{outline:2px solid transparent;outline-offset:0}
 .f{outline:1.5px solid transparent;outline-offset:0}
 .seg>button{transition:color .18s ease 60ms,transform .12s ease,background-color .2s ease}
