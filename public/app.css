@@ -356,7 +356,8 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{transit
 @media (hover:hover) and (pointer:fine){.clrx.on:hover i{opacity:.8}}
 .clrx.on:active i{opacity:.85}
 input.hasclr{padding-left:8px!important}
-input.hasclr.clrl{padding-left:42px!important}
+input.hasclr.clrl{padding-left:12px!important;padding-right:42px!important}
+.clrx.r{background:linear-gradient(to left,var(--fb,#fff) 0,var(--fb,#fff) 36px,var(--fb0,transparent) 50px)}.clrx.r i{left:auto;right:7px}
 /* перетаскивание плашки меню */
 .nav>div{touch-action:none;-webkit-user-select:none;user-select:none}
 .nav a{-webkit-user-drag:none}

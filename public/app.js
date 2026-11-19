@@ -1011,7 +1011,8 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 // кнопка «×» очистки поля: видна всегда, когда в поле есть текст (у каждого поля своя). Стоит соседом поля и
 // ставится по offsetLeft/offsetTop поля, поэтому едет вместе с формой при свайпе и никогда не «висит» отдельно.
 // Тап по ней очищает поле и сразу открывает клавиатуру.
-const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav') && !['qa', 'lg', 'pw'].includes(el.id) && el.dataset.f !== 'note'; // без «×»: Quick, вход и Note
+const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav') && !['qa', 'lg', 'pw'].includes(el.id); // без «×»: Quick и вход
+const bw = (el, side) => parseFloat(getComputedStyle(el)['border' + side + 'Width']) || 0; // clientLeft у input в WebKit/Chromium включает отступ, поэтому берём рамку явно
 function syncClr() {
   document.querySelectorAll('.clrx').forEach(b => { const el = b.previousElementSibling; if (!clrOk(el) || !el.value || !el.offsetParent) { if (el) el.classList.remove('hasclr', 'clrl'); b.remove(); } });
   document.querySelectorAll('input').forEach(el => {
@@ -1022,8 +1023,14 @@ function syncClr() {
     }
     if (!el.classList.contains('hasclr')) { el.classList.add('hasclr'); const cs = getComputedStyle(el); const al = cs.textAlign; el.classList.toggle('clrl', al === 'left' || al === 'start' || al === 'justify');
       const bg = cs.backgroundColor, m = bg.match(/rgba?\(([^)]+)\)/); const pa = m ? m[1].split(',').slice(0, 3).join(',') : '255,255,255';
-      b.style.setProperty('--fb', bg); b.style.setProperty('--fb0', `rgba(${pa},0)`); b.style.borderRadius = `${cs.borderTopLeftRadius} 0 0 ${cs.borderBottomLeftRadius}`; }
-    const L = el.offsetLeft + el.clientLeft + 'px', T = el.offsetTop + el.clientTop + 'px', H = el.clientHeight + 'px';
+      b.style.setProperty('--fb', bg); b.style.setProperty('--fb0', `rgba(${pa},0)`);
+      // у полей с текстом слева (Note и т.п.) «×» справа, текст не закрывает; у суммы по центру — слева
+      const r = el.classList.contains('clrl'); b.classList.toggle('r', r);
+      b.style.borderRadius = r ? `0 ${cs.borderTopRightRadius} ${cs.borderBottomRightRadius} 0` : `${cs.borderTopLeftRadius} 0 0 ${cs.borderBottomLeftRadius}`; }
+    // справа ставим через right: ширина поля может измениться позже (полоса прокрутки и т.п.), а «×» останется у края
+    const rt = b.classList.contains('r'), op = el.offsetParent; let R = ''; if (rt && op) { const a = op.getBoundingClientRect(), c = el.getBoundingClientRect(); R = Math.round((a.left + op.clientLeft + op.clientWidth - c.right + bw(el, 'Right')) * 10) / 10 + 'px'; }
+    if (b.style.right !== R) b.style.right = R; if (rt && b.style.left !== 'auto') b.style.left = 'auto';
+    const L = rt ? 'auto' : el.offsetLeft + bw(el, 'Left') + 'px', T = el.offsetTop + bw(el, 'Top') + 'px', H = el.offsetHeight - bw(el, 'Top') - bw(el, 'Bottom') + 'px';
     if (b.style.left !== L) b.style.left = L; if (b.style.top !== T) b.style.top = T; if (b.style.height !== H) b.style.height = H;
   });
 }
