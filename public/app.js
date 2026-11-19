@@ -121,6 +121,25 @@ function seedRules() {
   if (n) saveRules(r); setSetting('cat_rules_seed', '3');
 }
 const catLabel = (id) => { const c = byId('categories', id); if (!c) return '—'; const p = c.parent_id && byId('categories', c.parent_id); return (p ? p.name + ' › ' : '') + c.name; };
+// ---------- выбор категории: своя шторка поверх окна (в стандартном списке iOS заголовки разделов не настроить) ----------
+// Раздел выбирается тапом по заголовку (20 px), подкатегории — без названия раздела; в поле показывается «Раздел › Подкатегория»
+function catField(key, val, kind) { return `<button type="button" class="f catf${val ? '' : ' none'}" data-act="catpick" data-cf="${key}" data-kind="${kind}">${val ? esc(catLabel(val)) : 'No category'}</button>`; }
+function setCatField(btn, id) { btn.textContent = id ? catLabel(id) : 'No category'; btn.classList.toggle('none', !id); }
+function openCatPicker(btn) {
+  const key = btn.dataset.cf, kinds = btn.dataset.kind ? [btn.dataset.kind] : ['expense', 'income'], cur = F[key] || '';
+  const row = (c, sub) => `<div class="${sub ? 'cpi' : 'cph'}${c.id === cur ? ' sel' : ''}" data-cid="${c.id}">${sub ? '' : `<span class="ico sm">${rootIcon(c, 18)}</span>`}<span class="grow">${esc(c.name)}</span>${c.id === cur ? '<span class="cpk">✓</span>' : ''}</div>`;
+  const body = kinds.map(k => cats(k).filter(c => !c.parent_id && !c.archived).map(p => `<div class="cps">${row(p)}${cats(k).filter(c => c.parent_id === p.id && !c.archived).map(c => row(c, true)).join('')}</div>`).join('')).join('');
+  const el = document.createElement('div'); el.className = 'cp';
+  el.innerHTML = `<div class="cpp"><i class="grab"></i><h2>Category</h2><div class="cpl">${key === 'category' ? `<div class="cpi cp0${cur ? '' : ' sel'}" data-cid="">No category${cur ? '' : '<span class="cpk">✓</span>'}</div>` : ''}${body}</div></div>`;
+  document.body.appendChild(el); void el.offsetWidth; el.classList.add('on');
+  const close = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 300); };
+  el.addEventListener('click', (e) => {
+    const r = e.target.closest('[data-cid]'); if (!r) { if (e.target === el) close(); return; }
+    F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic(); close();
+  });
+  // список открывается на разделе выбранной категории (заголовок раздела виден целиком)
+  const sel = el.querySelector('.sel'), list = el.querySelector('.cpl'); const sec = sel && sel.closest('.cps'); if (sec && sec.offsetTop + sec.offsetHeight > list.clientHeight) list.scrollTop = sec.offsetTop - 4;
+}
 function ruleWord(note) { const w = wordsOf(note).find(x => x.length >= 3 && !/^\d/.test(x)); return w || ''; }
 const setting = (k, d) => { const r = S.db.settings[k]; return r && !r.deleted_at && r.value != null ? r.value : d; };
 const setSetting = (k, v) => put('settings', { id: k, value: String(v) });
@@ -597,7 +616,7 @@ function openRule(i) {
   const r = i === '' ? { w: '', c: '' } : rules()[+i]; if (!r) return; F = { ri: i, rw: r.w, rc: r.c };
   const opt = (k) => cats(k).filter(c => !c.parent_id && !c.archived).map(p => `<optgroup label="${esc(p.name)}"><option value="${p.id}" ${r.c === p.id ? 'selected' : ''}>${esc(p.name)}</option>${cats(k).filter(c => c.parent_id === p.id && !c.archived).map(c => `<option value="${c.id}" ${r.c === c.id ? 'selected' : ''}>${esc(p.name)} › ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
   openSheet(`<h2>${i === '' ? 'New rule' : 'Rule'}</h2><div class="lbl">Word in the note</div><input class="f" data-f="rw" value="${esc(r.w)}" placeholder="компы" autocapitalize="none">
-  <div class="lbl">Category</div><select class="f" data-f="rc"><option value="">—</option>${opt('expense')}${opt('income')}</select>
+  <div class="lbl">Category</div>${catField('rc', r.c, '')}
   <div style="display:flex;gap:10px">${i === '' ? '' : '<button class="btn red" data-act="ruledel">Delete</button>'}<button class="btn full" data-act="rulesave">Save</button></div>`);
 }
 function saveRule() {
@@ -715,7 +734,7 @@ function txHtml() {
   <div class="seg tt" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
   <div class="txpane"><input class="f amtin amt-${F.type}" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
   ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
-      : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div><select class="f" data-f="category"><option value="">No category</option>${catOpts}</select>`}
+      : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div>${catField('category', F.category, F.type === 'income' ? 'income' : 'expense')}`}
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
   ${!isT && fa && fa.currency === 'USD' ? `<div class="sub" style="margin-bottom:10px">Rate: ${fmtRate(curRate())} (from settings)</div>` : ''}
@@ -874,6 +893,7 @@ document.addEventListener('click', async (e) => {
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
     case 'ruleedit': openRule(id || ''); break;
+    case 'catpick': openCatPicker(a); break;
     case 'rulesave': saveRule(); break;
     case 'ruledel': deleteRule(); break;
     case 'catsave': saveCat(); break;
@@ -918,7 +938,7 @@ document.addEventListener('input', (e) => {
   }
   if (el.dataset.f) { F[el.dataset.f] = el.value;
     if (el.dataset.f === 'category') F.autoCat = false;
-    if (el.dataset.f === 'note' && F.type && F.type !== 'transfer' && (!F.category || F.autoCat)) { const c = ruleCat(F.note, F.type === 'income' ? 'income' : 'expense') || ''; if (c !== (F.category || '')) { F.category = c; F.autoCat = !!c; const sel = el.closest('.txpane, .sheet').querySelector('[data-f=category]'); if (sel) sel.value = c; } } if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
+    if (el.dataset.f === 'note' && F.type && F.type !== 'transfer' && (!F.category || F.autoCat)) { const c = ruleCat(F.note, F.type === 'income' ? 'income' : 'expense') || ''; if (c !== (F.category || '')) { F.category = c; F.autoCat = !!c; const fld = el.closest('.txpane, .sheet').querySelector('[data-cf=category]'); if (fld) setCatField(fld, c); } } if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
   if (el.id === 'srch') { S.q = el.value; const p = el.selectionStart; render(); const n = document.getElementById('srch'); if (n) { n.focus(); n.setSelectionRange(p, p); } }
   if (el.dataset.bud !== undefined) { clearTimeout(el._t); el._t = setTimeout(() => saveBudget(el.dataset.bud, el.value), 700); }
   if (el.id === 'ratem') { clearTimeout(el._t); el._t = setTimeout(() => setSetting('rate_manual', el.value.replace(/\s/g, '').replace(',', '.')), 600); }
