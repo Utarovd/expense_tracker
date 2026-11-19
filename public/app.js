@@ -1032,10 +1032,10 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
       const sh2 = sheetEl(); const neu = parts(); sh2.appendChild(ghost); alignTop(ghost, neu[0]); move([ghost], s0.dx, ''); move(neu, nbX, '');
       const pl2 = sh2.querySelector('.seg.tt > .segpill'), b2 = sh2.querySelectorAll('.seg.tt > button')[s0.j];
       if (pl2 && b2) { pl2._t = TY[s0.j] + b2.offsetLeft + ':' + b2.offsetWidth; pl2.dataset.t = TY[s0.j]; segMove(pl2, s0.px, s0.pw, ''); pl2.style.opacity = 1; }
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        move([ghost], sign * w0, EASE); move(neu, 0, EASE); if (pl2 && b2) segMove(pl2, b2.offsetLeft, b2.offsetWidth, EASE);
-        setTimeout(() => { ghost.remove(); neu.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); }, 320);
-      }));
+      // доводка стартует в том же кадре, что и отпускание (раньше ждали 2 кадра, и форма на миг замирала, а потом резко доезжала)
+      void sh2.offsetWidth;
+      move([ghost], sign * w0, EASE); move(neu, 0, EASE); if (pl2 && b2) segMove(pl2, b2.offsetLeft, b2.offsetWidth, EASE);
+      setTimeout(() => { ghost.remove(); neu.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); }, 320);
     } else {
       const a = bs[s0.i]; if (pl && a) { pl.dataset.t = TY[s0.i]; segMove(pl, a.offsetLeft, a.offsetWidth, EASE); }
       move(parts(), 0, EASE); const nb = s0.nb; if (nb) { move([nb], -sign * w0, EASE); setTimeout(() => nb.remove(), 320); }
