@@ -252,8 +252,11 @@ function ask(title, msg, okLabel = 'Delete') {
 const MAIN = ['/', '/transactions', '/stats', '/more'];
 let slideDir = '';
 const PAGES = () => ({ '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/accounts': pgAccounts, '/more': pgMore, '/budget': pgBudget, '/categories': pgCats, '/rate': pgRate, '/settings': pgSettings });
-function go(path, replace) { const a = MAIN.indexOf(S.route), b = MAIN.indexOf(path); slideDir = a > -1 && b > -1 ? (b > a ? 'pg-next' : 'pg-prev') : ''; if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
-window.addEventListener('popstate', () => { slideDir = ''; closeSheet(); S.route = location.pathname; render(); });
+// порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
+const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.length - 0.5 : -1;
+const dirTo = (a, b) => { const x = pgIdx(a), y = pgIdx(b); return x > -1 && y > -1 && x !== y ? (y > x ? 'pg-next' : 'pg-prev') : ''; };
+function go(path, replace) { slideDir = dirTo(S.route, path); if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
+window.addEventListener('popstate', () => { slideDir = dirTo(S.route, location.pathname); closeSheet(); S.route = location.pathname; render(); });
 // превью иконок в Settings не пересоздаются при перерисовке: те же загруженные картинки переносятся в новую разметку, без мигания
 const ICN = {};
 function keepIcons() { document.querySelectorAll('#app .icpick img').forEach(im => { const k = im.getAttribute('src'); const c = ICN[k]; if (c && c !== im) im.replaceWith(c); else if (!c) ICN[k] = im; }); }
@@ -281,7 +284,7 @@ function render(soft) {
   if (keep) return; // не перерисовываем поверх вводимого текста
   { const op = document.querySelector('.navpill'), nv = op && op.offsetParent; if (op && nv && S.pill) { const r1 = op.getBoundingClientRect(), r0 = nv.getBoundingClientRect(); S.pill = { x: r1.left - r0.left - nv.clientLeft, y: S.pill.y, w: r1.width, h: S.pill.h }; } }
   if (pgAnim) pgAnim(); // быстрые тапы: предыдущий переход сразу завершаем, ничего не копится
-  const slide = lastRoute !== null && lastRoute !== r && !soft && slideDir && MAIN.includes(lastRoute) && MAIN.includes(r);
+  const slide = lastRoute !== null && lastRoute !== r && !soft && slideDir && pgIdx(lastRoute) > -1 && pgIdx(r) > -1;
   const oldPg = slide ? $app.firstElementChild : null, oldBox = oldPg && oldPg.getBoundingClientRect();
   $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft && !slide ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r;
@@ -923,14 +926,15 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   function cleanup() { if (!st) return; if (st.nb) st.nb.remove(); const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; } st = null; }
   document.addEventListener('touchstart', (e) => {
     cleanup();
-    if (e.touches.length !== 1 || ovEl || !S.user || !MAIN.includes(S.route) || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
+    if (e.touches.length !== 1 || ovEl || !S.user || pgIdx(S.route) < 0 || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
     const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
     if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { st = null; return; } }
     e.preventDefault();
-    const i = MAIN.indexOf(S.route); const j = i + (dx < 0 ? 1 : -1);
+    // на вложенной странице Profile свайп вправо возвращает в Profile, влево некуда
+    const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf('/more') : -1) : i + (dx < 0 ? 1 : -1);
     if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = j;
       if (j >= 0 && j < MAIN.length) { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); document.body.appendChild(nb); st.nb = nb; } }
     const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? 0 : dx; trackV(st, st.dx);
@@ -947,10 +951,10 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const cv = flingCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0); const ease = 'transform ' + cv;
     if (c) { c.style.transition = ease; c.style.transform = done ? `translateX(${sign * (W() + 16)}px)` : ''; }
     if (s0.nb) { s0.nb.style.transition = ease; s0.nb.style.transform = done ? 'translateX(0)' : `translateX(${-sign * (W() + 16)}px)`; }
-    const tb = tabBox(done ? MAIN[s0.j] : S.route); if (tb) { setPill(tb, cv); S.pill = tb; }
-    onTab(done ? MAIN[s0.j] : S.route);
+    const here = MAIN.includes(S.route) ? S.route : '/more'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
+    onTab(done ? MAIN[s0.j] : here);
     setTimeout(() => {
-      if (done) { haptic(); slideDir = ''; lastRoute = MAIN[s0.j]; history.pushState({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); }
+      if (done) { haptic(); slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = MAIN[s0.j]; history[back ? 'replaceState' : 'pushState']({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); }
       if (s0.nb) s0.nb.remove(); if (st === s0) st = null;
     }, 310);
   }
