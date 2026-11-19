@@ -264,6 +264,18 @@ function money(account, amountMinor, rate) {
   const usd = account.currency === 'USD';
   return { currency: account.currency, fx_rate: usd ? rate : 1, amount_base: usd ? Math.round(amountMinor * rate) : amountMinor };
 }
+// правила «слово → категория» из настроек приложения (cat_rules), та же логика, что в приложении
+const stemOf = (w) => { w = String(w).toLowerCase().replace(/ё/g, 'е'); const m = w.replace(/(ами|ями|ов|ев|ах|ях|ам|ям|ой|ей|ий|ый|ая|ое|ые|ы|и|а|я|е|у|ю|о)$/, ''); return m.length >= 3 ? m : w; };
+const wordsOf = (t) => String(t || '').toLowerCase().replace(/ё/g, 'е').match(/[\p{L}\p{N}'ʻ’]+/gu) || [];
+async function ruleCat(env, space, text, kind) {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE id='cat_rules' AND deleted_at IS NULL").first(); if (!row) return null;
+  let rules = []; try { rules = JSON.parse(row.value) || []; } catch (_) { return null; }
+  const ws = wordsOf(text); if (!ws.length || !rules.length) return null;
+  const { results } = await env.DB.prepare('SELECT id, kind FROM categories WHERE space_id=? AND deleted_at IS NULL').bind(space).all(); const ok = new Map(results.map(c => [c.id, c.kind]));
+  let best = null, bl = 0;
+  for (const r of rules) { if (ok.get(r.c) !== kind) continue; const sts = wordsOf(r.w).map(stemOf); if (sts.length && sts.every(st => ws.some(w => w.startsWith(st)))) { const l = sts.join('').length; if (l > bl) { best = r.c; bl = l; } } }
+  return best;
+}
 async function findDup(env, accId, type, amount, ts, source) {
   const any = source === 'payme'; // скрин Payme может относиться к любой карте: ищем по всем счетам
   const { results } = await env.DB.prepare(`SELECT id,source,occurred_at,merchant FROM transactions WHERE (account_id=? OR ?) AND type=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?`)
@@ -374,7 +386,7 @@ async function ingest(env, ev) {
     return { text: notice + await qoldiq(env, space, acc, ev), txId, noCat: true };
   }
   const mm = money(acc, ev.amount, rate);
-  const mapped = ev.merchant ? (await env.DB.prepare('SELECT category_id FROM merchant_map WHERE merchant=?').bind(norm(ev.merchant)).first())?.category_id : null;
+  const mapped = ev.merchant ? ((await env.DB.prepare('SELECT category_id FROM merchant_map WHERE merchant=?').bind(norm(ev.merchant)).first())?.category_id || await ruleCat(env, space, ev.merchant, ev.type === 'income' ? 'income' : 'expense')) : null;
   stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: ev.type, account_id: acc.id, amount: ev.amount, ...mm, category_id: mapped || null, note: ev.note || '', merchant: ev.merchant || '', occurred_at: ts, source: ev.src === 'sms' ? 'sms' : ev.src, external_id: ev.ext || null }));
   await env.DB.batch(stmts); await touch(env);
   let catName = '';

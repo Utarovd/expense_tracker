@@ -88,7 +88,27 @@ function ensureSpace() {
   const sp = rows('spaces').sort((a, b) => a.sort - b.sort);
   if (!sp.length) return;
   if (!S.space || !byId('spaces', S.space) || byId('spaces', S.space).deleted_at) S.space = sp[0].id;
+  seedRules();
 }
+// ---------- правила «слово → категория»: «компы» → Leisure › Gaming сразу ----------
+// Хранятся в синхронизируемых настройках (cat_rules), их же читает сервер для бота и СМС/Wallet.
+// Слово сравнивается по основе: «компы», «компах», «компов» — одно и то же; правило из нескольких слов требует все слова.
+const stemOf = (w) => { w = String(w).toLowerCase().replace(/ё/g, 'е'); const m = w.replace(/(ами|ями|ов|ев|ах|ях|ам|ям|ой|ей|ий|ый|ая|ое|ые|ы|и|а|я|е|у|ю|о)$/, ''); return m.length >= 3 ? m : w; };
+const wordsOf = (t) => String(t || '').toLowerCase().replace(/ё/g, 'е').match(/[\p{L}\p{N}'ʻ’]+/gu) || [];
+const rules = () => { try { const r = JSON.parse(setting('cat_rules', '[]')); return Array.isArray(r) ? r : []; } catch (_) { return []; } };
+const saveRules = (r) => setSetting('cat_rules', JSON.stringify(r));
+function ruleCat(text, kind) {
+  const ws = wordsOf(text); if (!ws.length) return null; let best = null, bl = 0;
+  rules().forEach(r => { const c = byId('categories', r.c); if (!c || c.deleted_at || (kind && c.kind !== kind)) return; const sts = wordsOf(r.w).map(stemOf); if (!sts.length) return;
+    if (sts.every(st => ws.some(w => w.startsWith(st)))) { const l = sts.join('').length; if (l > bl) { best = r; bl = l; } } });
+  return best ? best.c : null;
+}
+function seedRules() { // одно правило, о котором сказал Doniyor; остальные он добавит сам или они запомнятся
+  if (S.db.settings && S.db.settings.cat_rules) return; const lei = cats('expense').find(c => !c.parent_id && /^leisure$/i.test(c.name)); if (!lei) return;
+  const g = cats('expense').find(c => c.parent_id === lei.id && /^gaming$/i.test(c.name)); if (g) saveRules([{ w: 'компы', c: g.id }]);
+}
+const catLabel = (id) => { const c = byId('categories', id); if (!c) return '—'; const p = c.parent_id && byId('categories', c.parent_id); return (p ? p.name + ' › ' : '') + c.name; };
+function ruleWord(note) { const w = wordsOf(note).find(x => x.length >= 3 && !/^\d/.test(x)); return w || ''; }
 const setting = (k, d) => { const r = S.db.settings[k]; return r && !r.deleted_at && r.value != null ? r.value : d; };
 const setSetting = (k, v) => put('settings', { id: k, value: String(v) });
 const accounts = () => rows('accounts').filter(a => a.space_id === S.space).sort((a, b) => a.sort - b.sort);
@@ -213,8 +233,8 @@ function quickOne(q, quiet) {
   let acc = accs.find(a => a.type === q.kind) || (q.usd ? accs.find(a => a.type === 'card_visa') : accs.find(a => a.type === 'cash')) || accs[0];
   if (!acc) return;
   // категория по прошлым операциям с той же заметкой
-  let cat = null;
-  if (q.note) { const same = rows('transactions').filter(t => (t.note || t.merchant || '').toLowerCase() === q.note.toLowerCase() && t.category_id).sort((a, b) => b.occurred_at - a.occurred_at)[0]; if (same) cat = same.category_id; }
+  let cat = q.note ? ruleCat(q.note, q.income ? 'income' : 'expense') : null;
+  if (!cat && q.note) { const same = rows('transactions').filter(t => (t.note || t.merchant || '').toLowerCase() === q.note.toLowerCase() && t.category_id).sort((a, b) => b.occurred_at - a.occurred_at)[0]; if (same) cat = same.category_id; }
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
   if (quiet) return { q, acc };
@@ -555,7 +575,26 @@ function pgBudget() {
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
   const hdl = `<span class="hdl" data-hdl aria-label="Drag to reorder">${svg('grip', 20)}</span>`;
-  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><button class="addsub" data-act="catnew" data-id="${r.id}">${svg('add', 18)}<span>Add subcategory</span></button></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
+  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><button class="addsub" data-act="catnew" data-id="${r.id}">${svg('add', 18)}<span>Add subcategory</span></button></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>
+  <h2 style="margin:24px 0 8px">Rules</h2><div class="sub" style="margin-bottom:10px">A word in the note picks the category right away: “компы” → Gaming.</div>
+  <div class="card">${rules().length ? rules().map((r, i) => `<div class="row" data-act="ruleedit" data-id="${i}"><div class="grow"><b>${esc(r.w)}</b><span class="sub">${esc(catLabel(r.c))}</span></div><span class="sub">›</span></div>`).join('') : '<div class="sub">No rules yet</div>'}</div>
+  <button class="btn sec full" data-act="ruleedit" data-id="">+ Rule</button>`;
+}
+function openRule(i) {
+  const r = i === '' ? { w: '', c: '' } : rules()[+i]; if (!r) return; F = { ri: i, rw: r.w, rc: r.c };
+  const opt = (k) => cats(k).filter(c => !c.parent_id && !c.archived).map(p => `<optgroup label="${esc(p.name)}"><option value="${p.id}" ${r.c === p.id ? 'selected' : ''}>${esc(p.name)}</option>${cats(k).filter(c => c.parent_id === p.id && !c.archived).map(c => `<option value="${c.id}" ${r.c === c.id ? 'selected' : ''}>${esc(p.name)} › ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
+  openSheet(`<h2>${i === '' ? 'New rule' : 'Rule'}</h2><div class="lbl">Word in the note</div><input class="f" data-f="rw" value="${esc(r.w)}" placeholder="компы" autocapitalize="none">
+  <div class="lbl">Category</div><select class="f" data-f="rc"><option value="">—</option>${opt('expense')}${opt('income')}</select>
+  <div style="display:flex;gap:10px">${i === '' ? '' : '<button class="btn red" data-act="ruledel">Delete</button>'}<button class="btn full" data-act="rulesave">Save</button></div>`);
+}
+function saveRule() {
+  const w = String(F.rw || '').trim().toLowerCase(); if (!w) return toast('Enter a word'); if (!F.rc) return toast('Pick a category');
+  const r = rules(); if (F.ri === '') r.push({ w, c: F.rc }); else r[+F.ri] = { w, c: F.rc };
+  saveRules(r); closeSheet(); haptic(); render(true); toast('Saved · old transactions are not changed');
+}
+async function deleteRule() {
+  if (!(await ask('Delete this rule?', '“' + F.rw + '” → ' + catLabel(F.rc)))) return;
+  const r = rules(); r.splice(+F.ri, 1); saveRules(r); closeSheet(); haptic(); render(true); toast('Deleted');
 }
 // перетаскивание за ручку ☰ (мышь и палец), соседи сдвигаются плавно
 let drag = null;
@@ -697,7 +736,9 @@ function saveTx() {
     const usd = acc.currency === 'USD'; const fx = prev && prev.account_id === acc.id && prev.fx_rate ? prev.fx_rate : (usd ? curRate() : 1);
     Object.assign(tx, { type: F.type, account_id: acc.id, amount: minor, currency: acc.currency, fx_rate: fx, amount_base: usd ? Math.round(minor * fx) : minor, category_id: F.category || null, note: F.note, occurred_at: ts });
     put('transactions', tx);
-    if (tx.merchant && tx.category_id) { /* память мерчант→категория ведёт бот; здесь не трогаем */ }
+    // новая заметка с выбранной категорией: предложить запомнить правило (один раз, тапом по подсказке)
+    const w = tx.category_id && !F.autoCat ? ruleWord(tx.note) : '';
+    if (w && !ruleCat(tx.note) ) { closeSheet(); haptic(); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); haptic(); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
   }
   closeSheet(); haptic(); toast('Saved');
 }
@@ -819,6 +860,9 @@ document.addEventListener('click', async (e) => {
     case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic(); toast('Deleted'); } break;
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
+    case 'ruleedit': openRule(id || ''); break;
+    case 'rulesave': saveRule(); break;
+    case 'ruledel': deleteRule(); break;
     case 'catsave': saveCat(); break;
     case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); break;
     case 'catup': moveCat(-1); break;
@@ -859,7 +903,9 @@ document.addEventListener('input', (e) => {
       if (c !== v) { el.value = c; let k = 0, p = 0; while (p < c.length && k < before) { if (/[\d.,]/.test(c[p])) k++; p++; } try { el.setSelectionRange(p, p); } catch (x) { /* */ } }
     } else if (c !== v) { const p = Math.max(0, (el.selectionStart || c.length) - (v.length - c.length)); el.value = c; try { el.setSelectionRange(p, p); } catch (x) { /* */ } }
   }
-  if (el.dataset.f) { F[el.dataset.f] = el.value; if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
+  if (el.dataset.f) { F[el.dataset.f] = el.value;
+    if (el.dataset.f === 'category') F.autoCat = false;
+    if (el.dataset.f === 'note' && F.type && F.type !== 'transfer' && (!F.category || F.autoCat)) { const c = ruleCat(F.note, F.type === 'income' ? 'income' : 'expense') || ''; if (c !== (F.category || '')) { F.category = c; F.autoCat = !!c; const sel = el.closest('.txpane, .sheet').querySelector('[data-f=category]'); if (sel) sel.value = c; } } if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
   if (el.id === 'srch') { S.q = el.value; const p = el.selectionStart; render(); const n = document.getElementById('srch'); if (n) { n.focus(); n.setSelectionRange(p, p); } }
   if (el.dataset.bud !== undefined) { clearTimeout(el._t); el._t = setTimeout(() => saveBudget(el.dataset.bud, el.value), 700); }
   if (el.id === 'ratem') { clearTimeout(el._t); el._t = setTimeout(() => setSetting('rate_manual', el.value.replace(/\s/g, '').replace(',', '.')), 600); }
