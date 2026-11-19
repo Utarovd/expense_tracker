@@ -1089,16 +1089,19 @@ document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target
 // шторки: свайп вниз закрывает (окно едет за пальцем), Esc, крестик, тап по фону
 (() => {
   let st = null;
+  // закрывать свайпом можно только когда видна верхняя черточка шторки
+  const grabSeen = (sh) => { const g = sh.querySelector('.grab'); if (!g) return true; const vv = window.visualViewport; const top = vv ? vv.offsetTop : 0; return g.getBoundingClientRect().top >= top - 1; };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ovEl && !document.querySelector('.cf')) closeSheet(); });
   document.addEventListener('touchstart', (e) => {
     const sh = sheetEl(); if (!sh || !sh.contains(e.target) || e.touches.length !== 1) { st = null; return; }
-    const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, t0: Date.now(), on: false, dy: 0, top: sh.scrollTop <= 0 };
+    const t = e.touches[0]; st = { x: t.clientX, y: t.clientY, t0: Date.now(), on: false, dy: 0, top: sh.scrollTop <= 0 && grabSeen(sh) };
+    if (!st.top) st = null; // шторка прокручена (или страница уехала под клавиатуру): свайп вниз просто листает вверх
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st || !ovEl) return; const sh = sheetEl(); const t = e.touches[0]; const dx = t.clientX - st.x, dy = t.clientY - st.y;
     if (!st.on) {
       if (!st.top && sh.scrollTop > 0) { st = null; return; }
-      if (dy > 8 && dy > Math.abs(dx) * 1.2 && sh.scrollTop <= 0) { st.on = true; st.y = t.clientY - 0; st.dy = 0; sh.style.transition = 'none'; }
+      if (dy > 8 && dy > Math.abs(dx) * 1.2 && sh.scrollTop <= 0 && grabSeen(sh)) { st.on = true; st.y = t.clientY - 0; st.dy = 0; sh.style.transition = 'none'; }
       else if (Math.abs(dx) > 10 || dy < -8) { st = null; return; }
       else return;
     }
