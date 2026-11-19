@@ -314,7 +314,7 @@ async function ingest(env, ev) {
     const ex = await env.DB.prepare('SELECT id FROM transactions WHERE source=? AND external_id=?').bind(ev.src, ev.ext).first();
     if (ex) return { dup: true, text: 'duplicate' };
   }
-  const dup = await findDup(env, acc.id, ev.type, ev.amount, ts, ev.src);
+  const dup = ev.noDup ? null : await findDup(env, acc.id, ev.type, ev.amount, ts, ev.src);
   if (dup) {
     if (!dup.merchant && ev.merchant) await env.DB.prepare('UPDATE transactions SET merchant=?, updated_at=?, synced_at=? WHERE id=?').bind(ev.merchant, now(), now(), dup.id).run();
     await touch(env);
@@ -491,15 +491,19 @@ async function tgHandle(env, update) {
       return notify(env, res);
     } catch (e) { return tgSend(env, chat, 'Recognition error: ' + String(e).slice(0, 200)); }
   }
-  const q = parseQuick(text);
-  if (!q) return tgSend(env, chat, 'Didn’t get that. Example: “taxi 25000” or “netflix 15$”. /help');
+  // несколько трат одним сообщением: «Компы 50к, снеки 20к» → две операции (как в Quick в приложении)
+  const parts = []; String(text).split(/[;\n]+|,(?!\d)/).map(x => x.trim()).filter(Boolean).forEach(x => { if (/\d/.test(x) || !parts.length) parts.push(x); else parts[parts.length - 1] += ' ' + x; });
+  const qs = parts.map(parseQuick);
+  if (!qs.length || qs.some(q => !q)) return tgSend(env, chat, 'Didn’t get that. Example: “taxi 25000” or “lunch 58k, taxi 25k”. /help');
   const accounts = (await env.DB.prepare('SELECT * FROM accounts WHERE space_id=? AND deleted_at IS NULL ORDER BY sort').bind(space).all()).results;
+  for (let i = 0; i < qs.length; i++) { const q = qs[i];
   let acc = q.kind === 'cash' ? accounts.find(a => a.type === 'cash') : q.kind === 'visa' ? accounts.find(a => a.type === 'card_visa') : q.kind === 'card' ? accounts.find(a => a.type === 'card_uzs') : null;
   if (!acc) acc = q.cur === 'USD' ? accounts.find(a => a.type === 'card_visa') : accounts.find(a => a.type === 'cash');
   if (!acc) acc = accounts[0];
-  const res = await ingest(env, { src: 'telegram', type: q.income ? 'income' : 'expense', merchant: q.note, ts: now(), amount: q.amount, currency: acc.currency, last4: acc.card_last4 || undefined, card: acc.type === 'card_visa' ? 'visa' : '', ext: 'tgmsg:' + msg.message_id });
-  if (res.dup) return;
-  return notify(env, res);
+  const res = await ingest(env, { src: 'telegram', type: q.income ? 'income' : 'expense', merchant: q.note, ts: now() + i, amount: q.amount, currency: acc.currency, last4: acc.card_last4 || undefined, card: acc.type === 'card_visa' ? 'visa' : '', ext: 'tgmsg:' + msg.message_id + (i ? ':' + i : ''), noDup: qs.slice(0, i).some(o => o.amount === q.amount) }); // одинаковые суммы в одном сообщении — это разные траты
+  if (res.dup) continue;
+  await notify(env, res);
+  }
 }
 async function sameMerchantUncategorized(env, tx) {
   if (!tx.merchant) return [];

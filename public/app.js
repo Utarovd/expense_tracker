@@ -196,8 +196,19 @@ function parseQuick(text) {
   const note = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\$|usd|доллар\w*|сум\w*|uzs|нал\w*|cash|visa|виза|карт\w*|card/ig, ' ').replace(/\s+/g, ' ').trim();
   return { income, usd, amount: Math.round(n * 100), kind, note };
 }
+// несколько трат за раз: «Компы 50к, снеки 20к» → две операции. Делим по запятой (не перед цифрой: «12,5$» — это число), «;» и новой строке;
+// кусок без суммы дописывается к заметке предыдущего
+function splitQuick(text) {
+  const out = []; String(text).split(/[;\n]+|,(?!\d)/).map(x => x.trim()).filter(Boolean).forEach(x => { if (/\d/.test(x) || !out.length) out.push(x); else out[out.length - 1] += ' ' + x; });
+  return out;
+}
 function quickAdd(text) {
-  const q = parseQuick(text); if (!q) return toast('Didn’t get that. Example: “lunch 58000”');
+  const items = splitQuick(text).map(parseQuick); if (!items.length || items.some(q => !q)) return toast('Didn’t get that. Example: “lunch 58000, taxi 25k”');
+  if (items.length === 1) return quickOne(items[0]);
+  const done = items.map(q => quickOne(q, true)).filter(Boolean); haptic();
+  toast(`Added ${done.length}: ` + done.map(d => `${d.q.income ? '+' : '−'}${fmt(d.q.amount, d.acc.currency)}${d.q.note ? ' ' + d.q.note : ''}`).join(' · '));
+}
+function quickOne(q, quiet) {
   const accs = accounts();
   let acc = accs.find(a => a.type === q.kind) || (q.usd ? accs.find(a => a.type === 'card_visa') : accs.find(a => a.type === 'cash')) || accs[0];
   if (!acc) return;
@@ -206,6 +217,7 @@ function quickAdd(text) {
   if (q.note) { const same = rows('transactions').filter(t => (t.note || t.merchant || '').toLowerCase() === q.note.toLowerCase() && t.category_id).sort((a, b) => b.occurred_at - a.occurred_at)[0]; if (same) cat = same.category_id; }
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
+  if (quiet) return { q, acc };
   haptic(); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
 }
 
@@ -999,7 +1011,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 // кнопка «×» очистки поля: видна всегда, когда в поле есть текст (у каждого поля своя). Стоит соседом поля и
 // ставится по offsetLeft/offsetTop поля, поэтому едет вместе с формой при свайпе и никогда не «висит» отдельно.
 // Тап по ней очищает поле и сразу открывает клавиатуру.
-const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav');
+const clrOk = (el) => el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled && /^(text|search|password|tel|email|url|number)?$/.test(el.getAttribute('type') || '') && !el.closest('.nav') && !['qa', 'lg', 'pw'].includes(el.id); // без «×»: Quick и вход
 function syncClr() {
   document.querySelectorAll('.clrx').forEach(b => { const el = b.previousElementSibling; if (!clrOk(el) || !el.value || !el.offsetParent) { if (el) el.classList.remove('hasclr', 'clrl'); b.remove(); } });
   document.querySelectorAll('input').forEach(el => {
