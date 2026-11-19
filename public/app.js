@@ -264,7 +264,7 @@ let lastRoute = null;
 // переход тапом по вкладке: как при свайпе, старая страница уезжает в сторону, новая въезжает рядом (300 мс, мягкое торможение)
 let pgAnim = null;
 function slidePages(oldPg, box, sign) {
-  const W = Math.min(window.innerWidth, 560) + 16, cv = 'transform 300ms cubic-bezier(.2,.8,.2,1)';
+  const W = Math.min(window.innerWidth, 560) + 16, cv = 'transform ' + springCurve(W, 0);
   const gh = document.createElement('div'); gh.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;z-index:15;pointer-events:none;will-change:transform`;
   oldPg.style.transition = ''; oldPg.style.transform = ''; gh.appendChild(oldPg); document.body.appendChild(gh);
   const nw = $app.firstElementChild; nw.style.transition = 'none'; nw.style.transform = `translateX(${-sign * W}px)`;
@@ -287,7 +287,7 @@ function render(soft) {
   const slide = lastRoute !== null && lastRoute !== r && !soft && slideDir && pgIdx(lastRoute) > -1 && pgIdx(r) > -1;
   const oldPg = slide ? $app.firstElementChild : null, oldBox = oldPg && oldPg.getBoundingClientRect();
   $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft && !slide ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
-  lastRoute = r;
+  lastRoute = r; render.seq = (render.seq || 0) + 1; if (window.swPrebuild) window.swPrebuild();
   if (oldPg) slidePages(oldPg, oldBox, slideDir === 'pg-next' ? -1 : 1);
   keepIcons();
   placePill();
@@ -932,43 +932,56 @@ function springCurve(remaining, v) {
 const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt = t - st.lt; if (dt > 0) st.v = 0.6 * ((x - st.lx) / dt) + 0.4 * (st.v || 0); } st.lx = x; st.lt = t; };
 // свайпы между разделами: страница едет за пальцем, соседняя въезжает рядом
 (() => {
-  let st = null;
+  // «плавно по стандарту»: соседние страницы строятся заранее (в паузе после отрисовки) и ждут за краем экрана;
+  // при касании их только показываем, во время свайпа и доводки едут одни transform, перерисовка — когда всё встало.
+  let st = null, pending = null; const pre = { key: '', els: {} };
   const W = () => Math.min(window.innerWidth, 560);
   const cur = () => $app.firstElementChild;
-  function cleanup() { if (!st) return; if (st.nb) st.nb.remove(); const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; } st = null; }
+  const off = (j, i) => (j > i ? 1 : -1) * (W() + 16);
+  const nbrs = () => { const i = MAIN.indexOf(S.route); if (i < 0) return PAGES()[S.route] ? [MAIN.indexOf('/more')] : []; return [i - 1, i + 1].filter(j => j >= 0 && j < MAIN.length); };
+  const myI = () => MAIN.includes(S.route) ? MAIN.indexOf(S.route) : MAIN.length; // вложенная страница стоит правее Profile
+  function dropPre() { Object.values(pre.els).forEach(n => n.remove()); pre.els = {}; pre.key = ''; }
+  function prebuild() {
+    if (!S.user || ovEl || pgIdx(S.route) < 0) return; const key = S.route + ':' + render.seq; if (pre.key === key) return;
+    dropPre(); pre.key = key; const i = myI();
+    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; });
+  }
+  window.swPrebuild = () => { clearTimeout(prebuild._t); prebuild._t = setTimeout(prebuild, 180); };
+  const mv = (el, x, tr) => { if (!el) return; el.style.transition = tr ? 'transform ' + tr : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };
+  function cleanup() { if (!st) return; const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; c.style.willChange = ''; } Object.values(pre.els).forEach(n => { n.style.visibility = 'hidden'; }); st = null; }
   document.addEventListener('touchstart', (e) => {
-    cleanup();
+    if (pending) pending(); cleanup();
     if (e.touches.length !== 1 || ovEl || !S.user || pgIdx(S.route) < 0 || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
+    prebuild(); const i = myI(); Object.entries(pre.els).forEach(([j, n]) => { mv(n, off(+j, i), ''); n.style.visibility = ''; });
+    const c = cur(); if (c) c.style.willChange = 'transform';
     const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
-    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { st = null; return; } }
+    if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { cleanup(); return; } }
     e.preventDefault();
     // на вложенной странице Profile свайп вправо возвращает в Profile, влево некуда
     const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf('/more') : -1) : i + (dx < 0 ? 1 : -1);
-    if (j !== st.j) { if (st.nb) { st.nb.remove(); st.nb = null; } st.j = j;
-      if (j >= 0 && j < MAIN.length) { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); document.body.appendChild(nb); st.nb = nb; } }
-    const edge = !(j >= 0 && j < MAIN.length); st.dx = edge ? 0 : dx; trackV(st, st.dx);
-    const c = cur(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${st.dx}px)`; }
-    if (st.nb) { st.nb.style.transition = 'none'; st.nb.style.transform = `translateX(${st.dx + (dx < 0 ? W() : -W()) + (dx < 0 ? 16 : -16)}px)`; }
+    st.j = pre.els[j] ? j : -1; st.nb = pre.els[j] || null; st.dx = st.nb ? dx : 0; trackV(st, st.dx);
+    mv(cur(), st.dx, ''); if (st.nb) mv(st.nb, st.dx + (dx < 0 ? W() + 16 : -W() - 16), '');
+    const o = pre.els[sub ? -1 : i + (dx < 0 ? -1 : 1)]; if (o) mv(o, off(sub ? -1 : i + (dx < 0 ? -1 : 1), sub ? MAIN.length : i), '');
     const pa = tabBox(S.route), pb = st.nb ? tabBox(MAIN[j]) : null;
     if (pa && pb) { const k = Math.min(1, Math.abs(st.dx) / W()); setPill({ x: pa.x + (pb.x - pa.x) * k, y: pa.y, w: pa.w + (pb.w - pa.w) * k, h: pa.h }, false); onTab(k > 0.5 ? MAIN[j] : S.route); }
   }, { passive: false });
   function end() {
-    if (!st || st.lock !== 'x') { st = null; return; }
-    const s0 = st; const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const c = cur();
+    if (!st || st.lock !== 'x') { cleanup(); return; }
+    const s0 = st; st = null; const v = Math.abs(s0.dx) / Math.max(1, Date.now() - s0.t0); const c = cur();
     const done = s0.nb && (Math.abs(s0.dx) > W() * 0.3 || (v > 0.5 && Math.abs(s0.dx) > 40));
     const sign = s0.dx < 0 ? -1 : 1; if (s0.lt && performance.now() - s0.lt > 80) s0.v = 0;
-    const cv = flingCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0); const ease = 'transform ' + cv;
-    if (c) { c.style.transition = ease; c.style.transform = done ? `translateX(${sign * (W() + 16)}px)` : ''; }
-    if (s0.nb) { s0.nb.style.transition = ease; s0.nb.style.transform = done ? 'translateX(0)' : `translateX(${-sign * (W() + 16)}px)`; }
+    const cv = springCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0);
+    mv(c, done ? sign * (W() + 16) : 0, cv); if (s0.nb) mv(s0.nb, done ? 0 : -sign * (W() + 16), cv);
     const here = MAIN.includes(S.route) ? S.route : '/more'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
-    onTab(done ? MAIN[s0.j] : here);
-    setTimeout(() => {
-      if (done) { haptic(); slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = MAIN[s0.j]; history[back ? 'replaceState' : 'pushState']({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); }
-      if (s0.nb) s0.nb.remove(); if (st === s0) st = null;
-    }, 310);
+    onTab(done ? MAIN[s0.j] : here); if (done) haptic();
+    const fin = () => { clearTimeout(tm); pending = null;
+      if (done) { slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = MAIN[s0.j]; history[back ? 'replaceState' : 'pushState']({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); dropPre(); }
+      else { if (c) { c.style.transition = ''; c.style.transform = ''; c.style.willChange = ''; } Object.values(pre.els).forEach(n => { n.style.visibility = 'hidden'; }); }
+    };
+    const tm = setTimeout(fin, 310); pending = fin;
   }
   document.addEventListener('touchend', end, { passive: true }); document.addEventListener('touchcancel', end, { passive: true });
 })();
@@ -1113,7 +1126,7 @@ function syncClr() {
   document.addEventListener('pointermove', (e) => {
     if (!d || e.pointerId !== d.id) return; const dx = e.clientX - d.x0;
     if (!d.started) { if (Math.abs(dx) < 6) return; d.started = true; const nv = document.querySelector('.nav'); nv.classList.add('drag'); document.querySelectorAll('.nav .tch').forEach(x => x.classList.remove('tch')); }
-    const box = inner(); const r = box.getBoundingClientRect(); paint((e.clientX - r.left) * (box.offsetWidth / r.width));
+    const box = inner(); const r = box.getBoundingClientRect(); trackV(d, e.clientX); paint((e.clientX - r.left) * (box.offsetWidth / r.width));
   });
   function stop(e) {
     if (!d || (e && e.pointerId !== d.id)) return; const d0 = d; d = null;
@@ -1121,7 +1134,7 @@ function syncClr() {
     if (!d0.started) return;
     justDragged = true; setTimeout(() => { justDragged = false; }, 50);
     const path = d0.target || (MAIN.includes(S.route) ? S.route : '/more');
-    const el = document.querySelector('.navpill'); if (el) { const tb = tabBox(path); if (tb) { setPill(tb, true); S.pill = tb; } }
+    const el = document.querySelector('.navpill'); if (el) { const tb = tabBox(path); if (tb) { if (d0.lt && performance.now() - d0.lt > 80) d0.v = 0; const x0 = d0.cx - tb.w / 2; setPill(tb, springCurve(tb.x - x0, d0.v || 0)); S.pill = tb; } }
     haptic();
     if (path !== (MAIN.includes(S.route) ? S.route : '/more')) setTimeout(() => go(path), 0); else onTab(path);
   }
@@ -1149,15 +1162,17 @@ document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target
       else if (Math.abs(dx) > 10 || dy < -8) { st = null; return; }
       else return;
     }
-    const d = Math.max(0, t.clientY - st.y); st.dy = d; if (e.cancelable) e.preventDefault();
-    sh.style.transform = `translateY(${d}px)`; ovEl.style.opacity = String(Math.max(0.2, 1 - d / 500));
+    const d = Math.max(0, t.clientY - st.y); st.dy = d; trackV(st, d); if (e.cancelable) e.preventDefault();
+    sh.style.transform = `translate3d(0,${d}px,0)`; ovEl.style.opacity = String(Math.max(0.2, 1 - d / 500));
   }, { passive: false });
   const end = () => {
     if (!st) return; const s2 = st; st = null; if (!s2.on || !ovEl) return;
     const sh = sheetEl(), ov = ovEl; const v = s2.dy / Math.max(1, Date.now() - s2.t0);
-    sh.style.transition = ''; ov.style.opacity = '';
-    if (s2.dy > 110 || v > 0.6) { sh.style.transform = ''; closeSheet(); }
-    else sh.style.transform = '';
+    // доводка пружиной со скоростью пальца: закрытие — вниз до конца, иначе мягко обратно
+    if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const H = sh.offsetHeight + 40; const close = s2.dy > 110 || v > 0.6;
+    const cv = springCurve((close ? H : 0) - s2.dy, s2.v || 0); sh.style.transition = 'transform ' + cv; ov.style.opacity = '';
+    if (close) { sh.style.transform = `translate3d(0,${H}px,0)`; closeSheet(); }
+    else { sh.style.transform = 'translate3d(0,0,0)'; setTimeout(() => { if (sheetEl() === sh) { sh.style.transition = ''; sh.style.transform = ''; } }, 320); }
   };
   document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
 })();
