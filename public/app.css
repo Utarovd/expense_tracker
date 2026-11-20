@@ -434,4 +434,11 @@ button.catf.none{color:var(--mut)}
 .cpi .grow,.cph .grow{flex:1}
 .cp .sel{color:var(--pri)}.cpk{font-weight:700;color:var(--pri);margin-left:auto}
 .cpp{touch-action:pan-y}
-.cph:active,.cpi:active{background:var(--line)}
+/* шторка категорий: подсветка при наведении (Mac) и касании (iPhone) как у остальных строк, по размеру строки */
+.cph,.cpi{position:relative;isolation:isolate}
+.cph::before,.cpi::before{content:"";position:absolute;top:2px;bottom:2px;left:-6px;right:-6px;border-radius:12px;background:var(--hov);opacity:0;z-index:-1;pointer-events:none;transition:opacity .25s ease}
+.cph::before{top:0;bottom:0}
+.cpi::before{left:40px}
+.cpi.cp0::before{left:-6px}
+@media (hover:hover) and (pointer:fine){.cph:hover::before,.cpi:hover::before{opacity:1}}
+@media (hover:none){.cph.tch::before,.cpi.tch::before{opacity:1;transition-duration:.08s}}
