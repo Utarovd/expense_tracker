@@ -151,7 +151,10 @@ function openCatPicker(btn) {
     if (tg) { // раскрыть раздел (открытые остальные сворачиваются одновременно)
       const s = tg.parentNode, was = s.classList.contains('open');
       el.querySelectorAll('.cps.open').forEach(x => { if (x !== s) x.classList.remove('open'); });
-      s.classList.toggle('open', !was); haptic(); return;
+      s.classList.toggle('open', !was); haptic();
+      // раскрытый раздел у нижнего края: список плавно докручивается, чтобы подкатегории были видны
+      if (!was) setTimeout(() => { const lb = list.getBoundingClientRect(), sb = s.getBoundingClientRect(); const over = sb.bottom - lb.bottom + 8; if (over > 0) list.scrollBy({ top: Math.min(over, sb.top - lb.top - 4), behavior: 'smooth' }); }, 310);
+      return;
     }
     const r = e.target.closest('[data-cid]'); if (!r) { if (e.target === el) close(); return; }
     F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic(); close();

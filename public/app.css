@@ -419,7 +419,7 @@ button.catf.none{color:var(--mut)}
 .cp.on .cpp{transform:none}
 .cpp .grab{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:-6px auto 10px}
 .cpp h2{margin:4px 0 8px;font-size:20px;flex:none}
-.cpl{overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;position:relative;padding-bottom:calc(20px + env(safe-area-inset-bottom));margin:0 -16px;padding-left:16px;padding-right:16px}
+.cpl{overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;position:relative;flex:1 1 auto;min-height:0;padding-bottom:calc(20px + env(safe-area-inset-bottom));margin:0 -16px;padding-left:16px;padding-right:16px}
 .cps{margin-top:6px}
 .cph{display:flex;align-items:center;gap:12px;padding:8px 4px;font-size:20px;font-weight:700;cursor:pointer;border-radius:12px}
 .cpa{flex:none;color:var(--mut);transition:transform .3s cubic-bezier(.4,0,.2,1)}
