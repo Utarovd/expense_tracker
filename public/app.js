@@ -1199,6 +1199,14 @@ function syncClr() {
       if (r.bottom > bottom - 16) d = r.bottom - (bottom - 16); else if (r.top < top + 16) d = r.top - (top + 16); if (d) sc.scrollBy({ top: d, behavior: 'smooth' }); };
     const vv = window.visualViewport; let done = false; const once = () => { if (done) return; done = true; if (vv) vv.removeEventListener('resize', once); setTimeout(fit, 60); };
     if (vv) vv.addEventListener('resize', once); setTimeout(once, 450); }
+  window.showField = showField;
+  document.addEventListener('focusin', (e) => { const t = e.target; if (t && t.matches && t.matches('input:not([type=checkbox]):not([type=radio]),textarea') && t.closest('.sheet')) showField(t); });
+  // клавиатура iOS: окно поднимается над ней (низ шторки = верх клавиатуры, высота = видимая часть экрана), поле в фокусе видно
+  const vv = window.visualViewport;
+  if (vv) { const kbFit = () => { if (!ovEl) return; const sh = ovEl.firstChild; const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      if (kb > 80) { ovEl.style.top = vv.offsetTop + 'px'; ovEl.style.bottom = kb + 'px'; if (sh) sh.style.maxHeight = (vv.height - 12) + 'px'; }
+      else { ovEl.style.top = ''; ovEl.style.bottom = ''; if (sh) sh.style.maxHeight = ''; } };
+    vv.addEventListener('resize', kbFit); vv.addEventListener('scroll', kbFit); }
   document.addEventListener('touchstart', clear, { passive: false, capture: true }); document.addEventListener('mousedown', clear, true);
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.clrx')) { e.preventDefault(); e.stopPropagation(); } }, true);
   let q = 0; const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(syncClr); };
