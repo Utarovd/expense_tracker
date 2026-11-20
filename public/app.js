@@ -1183,7 +1183,14 @@ function syncClr() {
 }
 (() => {
   const clear = (e) => { const b = e.target.closest && e.target.closest('.clrx'); if (!b) return; e.preventDefault(); e.stopPropagation();
-    const el = b.previousElementSibling; if (!el) return; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); el.focus({ preventScroll: true }); if (typeof haptic === 'function') haptic(); syncClr(); };
+    const el = b.previousElementSibling; if (!el) return; el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); el.focus(); if (typeof haptic === 'function') haptic(); syncClr(); showField(el); };
+  // как при обычном тапе по полю: когда клавиатура открылась, окно плавно докручивается, чтобы поле было видно над ней
+  function showField(el) {
+    const fit = () => { if (document.activeElement !== el) return; const vv = window.visualViewport; const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight; const top = vv ? vv.offsetTop : 0;
+      const r = el.getBoundingClientRect(); const sc = el.closest('.sheet') || document.scrollingElement; let d = 0;
+      if (r.bottom > bottom - 16) d = r.bottom - (bottom - 16); else if (r.top < top + 16) d = r.top - (top + 16); if (d) sc.scrollBy({ top: d, behavior: 'smooth' }); };
+    const vv = window.visualViewport; let done = false; const once = () => { if (done) return; done = true; if (vv) vv.removeEventListener('resize', once); setTimeout(fit, 60); };
+    if (vv) vv.addEventListener('resize', once); setTimeout(once, 450); }
   document.addEventListener('touchstart', clear, { passive: false, capture: true }); document.addEventListener('mousedown', clear, true);
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.clrx')) { e.preventDefault(); e.stopPropagation(); } }, true);
   let q = 0; const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(syncClr); };
