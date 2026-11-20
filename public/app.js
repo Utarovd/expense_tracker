@@ -1036,7 +1036,8 @@ function applyTheme() {
   document.documentElement.dataset.nav = tryLS(() => localStorage.getItem('navstyle')) || 'glass';
   const ic = tryLS(() => localStorage.getItem('appicon')) || 'a'; const L = (id, h) => { const el = document.getElementById(id); if (el && el.getAttribute('href') !== h) el.setAttribute('href', h); };
   L('lati', `/icon-${ic}-180.png`); L('lfav', `/icon-${ic}-192.png`); L('lman', `/manifest-${ic}.webmanifest`);
-  document.querySelectorAll('meta[name=theme-color]').forEach(mt => { mt.content = dark ? '#16171b' : '#f8f5ee'; });
+  // цвет полосы статус-бара = цвет фона у верхнего края (iOS 26 рисует полосу сама), поэтому верх сливается с фоном
+  document.querySelectorAll('meta[name=theme-color]').forEach(mt => { mt.content = dark ? '#121316' : '#f5f1e8'; });
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => smoothTheme(applyTheme));
 async function logoutLocal() { S.user = null; TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; }); S.cursor = 0; S.space = null; S.me = null; await idb.clear(); closeSheet(); render(); }

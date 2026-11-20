@@ -275,6 +275,9 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none}
 :root[data-theme=dark]{--bg:#121316}
 :root[data-theme=dark] body::before{background:url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'220'%20height%3D'220'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'.85'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200%20%200%200%200%200%200%20%200%200%200%200%200%20%200%200%200%200.1%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E"),radial-gradient(90% 50% at 10% -5%,rgba(47,98,214,.30),transparent 70%),radial-gradient(70% 40% at 105% 100%,rgba(245,197,24,.10),transparent 70%),radial-gradient(120% 70% at 50% -10%,#1c1e23 0%,#131417 55%,#0d0e10 100%)}
 html{background:var(--bg)}
+/* верхний край фона ровного цвета статус-бара и плавно переходит в сияние: полоса iOS сверху не видна как отдельная */
+body::after{content:"";position:fixed;left:0;right:0;top:0;height:calc(env(safe-area-inset-top) + 56px);z-index:-1;pointer-events:none;background:linear-gradient(180deg,#f5f1e8,rgba(245,241,232,0))}
+:root[data-theme=dark] body::after{background:linear-gradient(180deg,#121316,rgba(18,19,22,0))}
 /* статус-бар: фон под ним, без «чёлки»; при прокрутке стекло с размытием */
 .sbar{position:fixed;top:0;left:0;right:0;height:calc(env(safe-area-inset-top) + 14px);z-index:30;pointer-events:none;background:linear-gradient(180deg,rgba(10,21,48,.42),rgba(10,21,48,0));transition:background .3s ease,height .3s ease}
 :root[data-theme=dark] .sbar{background:linear-gradient(180deg,rgba(8,10,14,.55),rgba(8,10,14,0))}
