@@ -405,15 +405,15 @@ function parseHumoSms(t) {
 function parseSms(text) {
   const t = String(text).replace(/[\u2018\u2019\u02bb\u02bc\u02b9`´]/g, "'").replace(/\s+/g, ' ').trim();
   if (/^(HUMO|UZCARD)/i.test(t)) return parseHumoSms(t);
-  const m = t.match(/^(.+?):\s*(.+?)(?:,\s*[A-Z]{2},)?\s*(\d\d)\.(\d\d)\.(\d\d)\s+(\d\d):(\d\d)\s*,?\s*karta\s*\*+(\d{4})\.?\s*Miqdor:\s*([\d.,]+)\s*([A-Z]{3})[.,]?\s*(?:Qoldiq:\s*([\d.,]+))?/i);
+  const m = t.match(/^(.+?):\s*(.+?)(?:,\s*[A-Z]{2},)?\s*(\d\d)\.(\d\d)\.(\d\d)\s+(\d\d):(\d\d)\s*,?\s*karta\s*\*+(\d{4})\.?\s*(?:Miqdor|summa):\s*([\d.,]+)\s*([A-Z]{3})[.,]?\s*(?:(?:Qoldiq|balans):\s*([\d.,]+))?/i);
   if (!m) return null;
   const [, kind, merchant, dd, mm, yy, HH, MM, last4, amt, cur, bal] = m;
   const k = kind.toLowerCase();
   let type = null;
   let kindX;
   if (/naqd pul kirim/.test(k)) kindX = 'cashin';
-  if (/chiqim|to'?lov|xarid|yechish|payment|purchase/.test(k)) type = 'expense';
-  else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish/.test(k)) type = 'income';
+  if (/chiqim|to'?lov|xarid|yechish|payment|purchase|platezh|oplata|spisanie/.test(k)) type = 'expense';
+  else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish|popoln|zachisl|postupl|vozvrat/.test(k)) type = 'income';
   if (!type) return null;
   const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
   return { type, kind: kindX, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${dd}${mm}${yy}${HH}${MM}:${amt}:${bal || ''}` };
