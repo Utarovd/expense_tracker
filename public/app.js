@@ -401,7 +401,13 @@ function slidePages(oldPg, box, sign) {
   const fin = () => { clearTimeout(tm); clip.remove(); if (nw.isConnected) { nw.style.transition = ''; nw.style.transform = ''; nw.style.willChange = ''; } if (pgAnim === fin) pgAnim = null; };
   const tm = setTimeout(fin, 320); pgAnim = fin;
 }
+// тап не теряется: фоновая перерисовка (синхронизация и т.п.) не меняет страницу под пальцем — ждёт, пока касание закончится
+let touchBusy = false, touchT = 0;
+document.addEventListener('touchstart', () => { touchBusy = true; clearTimeout(touchT); }, { passive: true, capture: true });
+const touchOff = () => { clearTimeout(touchT); touchT = setTimeout(() => { touchBusy = false; if (render._q) { render._q = false; render(true); } }, 450); };
+document.addEventListener('touchend', touchOff, { passive: true, capture: true }); document.addEventListener('touchcancel', touchOff, { passive: true, capture: true });
 function render(soft) {
+  if (soft && touchBusy) { render._q = true; return; }
   if (!S.user) { if (S.route !== '/login') { S.route = '/login'; history.replaceState({}, '', '/login'); } return renderLogin(); }
   if (S.route === '/login') { S.route = '/'; history.replaceState({}, '', '/'); }
   const r = S.route;
@@ -1245,9 +1251,10 @@ function syncClr() {
   // клавиатура iOS: окно поднимается над ней (низ шторки = верх клавиатуры, высота = видимая часть экрана), поле в фокусе видно
   const vv = window.visualViewport;
   if (vv) { const kbFit = () => { if (!ovEl) return; const sh = ovEl.firstChild; const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      if (kb > 80) { ovEl.style.top = vv.offsetTop + 'px'; ovEl.style.bottom = kb + 'px'; if (sh) sh.style.maxHeight = (vv.height - 12) + 'px'; }
+      const ae = document.activeElement; const typing = ae && /INPUT|TEXTAREA/.test(ae.tagName) && !/checkbox|radio|button/.test(ae.type || '') && ovEl.contains(ae);
+      if (kb > 80 && typing) { ovEl.style.top = vv.offsetTop + 'px'; ovEl.style.bottom = kb + 'px'; if (sh) sh.style.maxHeight = (vv.height - 12) + 'px'; }
       else { ovEl.style.top = ''; ovEl.style.bottom = ''; if (sh) sh.style.maxHeight = ''; } };
-    vv.addEventListener('resize', kbFit); vv.addEventListener('scroll', kbFit); }
+    vv.addEventListener('resize', kbFit); vv.addEventListener('scroll', kbFit); document.addEventListener('focusout', () => setTimeout(kbFit, 350)); document.addEventListener('focusin', () => setTimeout(kbFit, 350)); }
   document.addEventListener('touchstart', clear, { passive: false, capture: true }); document.addEventListener('mousedown', clear, true);
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.clrx')) { e.preventDefault(); e.stopPropagation(); } }, true);
   let q = 0; const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(syncClr); };
@@ -1280,14 +1287,34 @@ function syncClr() {
   }
   const move = (els, x, dur) => els.forEach(el => { el.style.transition = dur ? `transform ${dur}` : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; });
   const layers = (els, on) => els.forEach(el => { el.style.willChange = on ? 'transform' : ''; });
-  const drop = (s) => { if (!s) return; Object.values(s.nbs).forEach(n => n.remove()); layers(s.cur, false); s.cur.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); };
+  // соседние формы строятся заранее, в паузе (после открытия окна, после ввода, после смены типа), и ждут скрытыми:
+  // касание только показывает их — вертикальный свайп и прокрутка окна больше не тормозят на старте
+  const pre = { key: '', sh: null, nbs: {} };
+  const preKey = () => JSON.stringify(F);
+  const hide = (n) => { n.style.visibility = 'hidden'; n.style.transition = 'none'; };
+  function prep() {
+    const sh = sheetEl(); const seg = sh && sh.querySelector('.seg.tt'); if (!seg || st) return;
+    if (pre.sh === sh && pre.key === preKey() && Object.values(pre.nbs).every(n => n.isConnected)) return;
+    Object.values(pre.nbs).forEach(n => n.remove()); pre.nbs = {}; pre.sh = sh; pre.key = preKey();
+    const i = TY.indexOf(F.type); const bs = [...seg.querySelectorAll(':scope > button')]; const w0 = W();
+    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (b && !b.disabled) { const n = preview(TY[j], j > i ? w0 : -w0); hide(n); pre.nbs[j] = n; } });
+  }
+  let prepT = 0; const prepSoon = (ms = 250) => { clearTimeout(prepT); prepT = setTimeout(() => { if (window.requestIdleCallback) requestIdleCallback(prep, { timeout: 400 }); else prep(); }, ms); };
+  document.addEventListener('input', (e) => { if (e.target.closest && e.target.closest('.sheet')) prepSoon(); });
+  document.addEventListener('change', (e) => { if (e.target.closest && e.target.closest('.sheet')) prepSoon(); });
+  new MutationObserver(() => { const sh = sheetEl(); if (sh && sh.querySelector('.seg.tt') && pre.sh !== sh) prepSoon(350); }).observe(document.body, { childList: true });
+  window.txPrepSoon = prepSoon;
+  const drop = (s) => { if (!s) return; Object.values(s.nbs).forEach(n => { if (Object.values(pre.nbs).includes(n)) hide(n); else n.remove(); }); layers(s.cur, false); s.cur.forEach(el => { el.style.transition = ''; el.style.transform = ''; }); };
   document.addEventListener('touchstart', (e) => {
     if (settle) settle(); drop(st); st = null; const sh = sheetEl(); if (!sh || e.touches.length !== 1 || !sh.contains(e.target)) return;
     const seg = sh.querySelector('.seg.tt'); if (!seg || e.target.closest('input[type=datetime-local],.clrx')) return;
     const t = e.touches[0]; const i = TY.indexOf(F.type); const bs = [...seg.querySelectorAll(':scope > button')]; const w0 = W();
     st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, bs, bx: bs.map(b => [b.offsetLeft, b.offsetWidth]), i, j: -1, dx: 0, k: 0, w0, cur: parts(), nbs: {} };
     layers(st.cur, true);
-    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (b && !b.disabled) st.nbs[j] = preview(TY[j], j > i ? w0 : -w0); });
+    const fresh = pre.sh === sh && pre.key === preKey() && Object.values(pre.nbs).every(n => n.isConnected);
+    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (!b || b.disabled) return;
+      if (fresh && pre.nbs[j]) { const n = pre.nbs[j]; n.style.transition = 'none'; n.style.transform = `translate3d(${j > i ? w0 : -w0}px,0,0)`; n.style.visibility = ''; st.nbs[j] = n; }
+      else st.nbs[j] = preview(TY[j], j > i ? w0 : -w0); });
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
@@ -1320,7 +1347,8 @@ function syncClr() {
       move(s0.cur, sign * w0, cv); move([nb], 0, cv); haptic();
       // фокус не трогаем во время движения: iOS прокручивает окно к полю в фокусе, и формы дёргались.
       // Клавиатура остаётся как была: когда форма встала на место, фокус переходит на сумму новой формы, и только потом старая убирается
-      settle = () => { clearTimeout(tm); settle = null; nb.classList.remove('txnb'); nb.style.cssText = '';
+      pre.nbs = {}; pre.key = ''; // готовая соседка стала формой, остальные заготовки строятся заново после доводки
+      settle = () => { clearTimeout(tm); settle = null; prepSoon(200); nb.classList.remove('txnb'); nb.style.cssText = '';
         if (typing && !F.id) { const am = nb.querySelector('[data-f=amount]'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
         s0.cur.forEach(el => el.remove()); syncClr(); };
       const tm = setTimeout(settle, 320);
