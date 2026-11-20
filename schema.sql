@@ -87,3 +87,11 @@ INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,f
   SELECT 'tx-xfer-b', a.space_id, 'transfer', a.id, 100000, 'UZS', 1, 100000, NULL, 'Between own cards', 'IYM UZCARD2UZCARD BEZ KOMI', CAST(strftime('%s','2026-11-20 21:01:00') AS INTEGER)*1000, 'tg-xfer-1', 'sms', 'sms:3153:2111260201:1000.00:1023.50', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
   FROM accounts a WHERE a.card_last4='3153' AND a.deleted_at IS NULL AND EXISTS (SELECT 1 FROM transactions WHERE id='tx-xfer-a' OR (source='sms' AND external_id='sms:2660:2111260201:1000.00:8306600.00')) LIMIT 1;
 INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
+
+-- Visa: оплата физической картой 20.11 20:43, IP OOO ANGLESEY FOOD, 2.81 USD (33 520 UZS), Family > Groceries (по чеку Doniyor)
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-visa-anglesey', a.space_id, 'expense', a.id, 281, 'USD', 33520.0/2.81, 3352000,
+    COALESCE((SELECT c.id FROM categories c JOIN categories p ON p.id=c.parent_id WHERE c.space_id=a.space_id AND c.name='Groceries' AND p.name='Family' AND c.deleted_at IS NULL LIMIT 1),(SELECT id FROM categories WHERE space_id=a.space_id AND kind='expense' AND name='Groceries' AND deleted_at IS NULL LIMIT 1)),
+    '', 'IP OOO ANGLESEY FOOD', CAST(strftime('%s','2026-11-20 15:43:00') AS INTEGER)*1000, NULL, 'app', 'receipt:visa:2011262043:281', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a JOIN spaces s ON s.id=a.space_id WHERE a.type='card_visa' AND a.deleted_at IS NULL AND s.kind='personal' LIMIT 1;
+INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
