@@ -4,6 +4,10 @@ const TABLES = ['spaces', 'accounts', 'categories', 'transactions', 'budgets', '
 const TZ = 5 * 3600000;
 const $app = document.getElementById('app');
 const tryLS = (f) => { try { return f(); } catch (e) { return null; } };
+// нативное приложение iPhone: код и данные на устройстве, сервер только для синхронизации (вход по токену)
+const NATIVE = location.protocol === 'capacitor:';
+const API_BASE = NATIVE ? 'https://budget.in-manager.uz' : '';
+const ntok = () => NATIVE ? tryLS(() => localStorage.getItem('ntok')) : null;
 const S = { user: null, db: {}, queue: {}, cursor: 0, space: null, route: '/', month: null, rates: null, me: null, online: navigator.onLine, syncing: false, lastSync: 0, q: '', accF: '', uncat: false, pending: 0, per: '1M', hide: tryLS(() => localStorage.getItem('hideAmt')) === '1' };
 TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,9 +34,14 @@ const unb64u = (x) => Uint8Array.from(atob(x.replace(/-/g, '+').replace(/_/g, '/
 async function api(path, opt = {}, ms = 15000) {
   const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms);
   try {
-    const r = await fetch(path, { ...opt, signal: ac.signal, headers: { 'content-type': 'application/json', ...(opt.headers || {}) }, credentials: 'same-origin' });
+    const tk = ntok(); const nh = NATIVE ? { 'x-client': 'native', ...(tk ? { authorization: 'Bearer ' + tk } : {}) } : {};
+    const r = await fetch(API_BASE + path, { ...opt, signal: ac.signal, headers: { 'content-type': 'application/json', ...nh, ...(opt.headers || {}) }, credentials: NATIVE ? 'omit' : 'same-origin' });
     const j = await r.json().catch(() => ({}));
-    if (r.status === 401 && path !== '/api/login') { await logoutLocal(); throw new Error('auth'); }
+    if (r.status === 401 && path !== '/api/login') {
+      // в приложении данные и несинхронизированные изменения остаются на устройстве: только снова войти
+      if (NATIVE) { tryLS(() => localStorage.removeItem('ntok')); S.user = null; closeSheet(); render(); throw new Error('auth'); }
+      await logoutLocal(); throw new Error('auth');
+    }
     return { ok: r.ok, status: r.status, data: j };
   } finally { clearTimeout(to); }
 }
@@ -750,17 +759,17 @@ function pgSettings() {
   return `<div class="top"><h1>Settings</h1></div>
   <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
   <div class="card"><div class="lbl">Menu style</div><div class="seg" style="margin-top:8px;width:max-content">${[['glass', 'Liquid Glass'], ['solid', 'Solid']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('navstyle')) || 'glass') === k ? 'on' : ''}" data-act="navstyle" data-id="${k}">${n}</button>`).join('')}</div></div>
-  <div class="card"><div class="lbl">App icon</div><div class="icpick">${[['a', 'Wallet'], ['b', 'Donut'], ['c', 'Growth']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('appicon')) || 'a') === k ? 'on' : ''}" data-act="appicon" data-id="${k}"><img src="/icon-${k}-180.png" alt=""><span>${n}</span></button>`).join('')}</div><div class="sub" style="margin-top:10px">On iPhone the icon is saved when the app is added. To change it: delete the app from the Home Screen, open the site in Safari, then Share → Add to Home Screen.</div></div>
+  ${NATIVE ? '' : `<div class="card"><div class="lbl">App icon</div><div class="icpick">${[['a', 'Wallet'], ['b', 'Donut'], ['c', 'Growth']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('appicon')) || 'a') === k ? 'on' : ''}" data-act="appicon" data-id="${k}"><img src="/icon-${k}-180.png" alt=""><span>${n}</span></button>`).join('')}</div><div class="sub" style="margin-top:10px">On iPhone the icon is saved when the app is added. To change it: delete the app from the Home Screen, open the site in Safari, then Share → Add to Home Screen.</div></div>`}
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div><div class="sub" style="margin-top:10px">Last SMS or Wallet received: ${me.last_in ? (() => { const d = new Date(me.last_in + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1) + ' ' + hm(me.last_in); })() : 'never'}</div>${me.bad_in ? `<div class="sub" style="margin-top:6px;color:#d64545">A request with a wrong URL came on ${(() => { const d = new Date(me.bad_in.at + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1) + ' ' + hm(me.bad_in.at); })()}. The Shortcut has an old URL: paste the one above.</div>` : ''}` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
-  ${window.PublicKeyCredential ? `<div class="card"><b>Face ID</b><div class="sub" style="margin:4px 0 10px">${me.pk ? 'Face ID sign-in is on. The password still works.' : 'Sign in with Face ID instead of typing the password. The password stays as a backup.'}</div><div class="err" id="pkerr"></div>${me.pk ? '<button class="btn sec" data-act="pkoff">Turn off Face ID</button>' : '<button class="btn" data-act="pkon">Turn on Face ID</button>'}</div>` : ''}
+  ${window.PublicKeyCredential && !NATIVE ? `<div class="card"><b>Face ID</b><div class="sub" style="margin:4px 0 10px">${me.pk ? 'Face ID sign-in is on. The password still works.' : 'Sign in with Face ID instead of typing the password. The password stays as a backup.'}</div><div class="err" id="pkerr"></div>${me.pk ? '<button class="btn sec" data-act="pkoff">Turn off Face ID</button>' : '<button class="btn" data-act="pkon">Turn on Face ID</button>'}</div>` : ''}
   <div class="card"><b>Password</b><div class="sub" style="margin:4px 0 10px">Other devices will be signed out, this one stays signed in.</div><input class="f" type="password" id="pw0" placeholder="Current password" autocomplete="current-password"><input class="f" type="password" id="pw1" placeholder="New password (8+ characters)" autocomplete="new-password"><input class="f" type="password" id="pw2" placeholder="Repeat new password" autocomplete="new-password"><div class="err" id="pwerr"></div><button class="btn" data-act="pwsave">Change password</button></div>
   <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
   <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
 }
 function renderLogin() {
-  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div>${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential ? '<button class="btn full" data-act="pklogin" style="margin-bottom:10px">Sign in with Face ID</button>' : ''}<button class="btn ${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential ? 'sec ' : ''}full" data-act="login">Sign in</button></div>`;
+  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div>${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential && !NATIVE ? '<button class="btn full" data-act="pklogin" style="margin-bottom:10px">Sign in with Face ID</button>' : ''}<button class="btn ${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential && !NATIVE ? 'sec ' : ''}full" data-act="login">Sign in</button></div>`;
 }
 
 // плавная смена темы: вся страница (фоны, градиенты, сияние, меню) перетекает за 300 мс без кадров чужого цвета
@@ -889,7 +898,8 @@ document.addEventListener('click', async (e) => {
       const er = document.getElementById('lgerr');
       if (!r) return er.textContent = 'No connection to the server';
       if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Too many attempts, wait 15 minutes' : 'Wrong login or password';
-      S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); break; }
+      if (NATIVE && r.data.token) tryLS(() => localStorage.setItem('ntok', r.data.token));
+      S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(!NATIVE); break; }
     case 'pkon': {
       const er = document.getElementById('pkerr');
       try {
@@ -927,7 +937,7 @@ document.addEventListener('click', async (e) => {
       const sh = sheetEl(); const m = curMonth();
       const b = budgetFor(null, m); if (b) sh.querySelector('#bt_total').value = grp(Math.round(b.limit_amount / 100));
       sh.querySelectorAll('[data-bt]').forEach(i => { const x = budgetFor(i.dataset.bt, m); i.value = x && x.limit_amount > 0 ? grp(Math.round(x.limit_amount / 100)) : ''; }); btCalc(); break; }
-    case 'logout': if (!(await ask('Log out?', 'You’ll need to sign in again on this device.', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); await logoutLocal(); break;
+    case 'logout': if (!(await ask('Log out?', 'You’ll need to sign in again on this device.', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); tryLS(() => localStorage.removeItem('ntok')); await logoutLocal(); break;
     case 'add': openTx(null); break;
     case 'slice': selSlice(id); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
@@ -1068,7 +1078,7 @@ async function boot(fresh) {
   }
 }
 window.addEventListener('scroll', () => { const sb = document.querySelector('.sbar'); if (sb) sb.classList.toggle('on', window.scrollY > 6); }, { passive: true });
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !NATIVE) {
   // приложение, открытое из фона, тоже получает новую версию: при возврате проверяем обновление,
   // а когда новая версия встала — тихо перезагружаем страницу (если не открыто окно и не идёт ввод)
   const had = !!navigator.serviceWorker.controller; let pendingReload = false;

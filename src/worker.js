@@ -32,8 +32,12 @@ function cookie(req, name) {
   const m = (req.headers.get('cookie') || '').match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
   return m ? m[1] : null;
 }
+// нативное приложение (iPhone) шлёт токен в заголовке Authorization: Bearer
+const bearer = (req) => { const m = (req.headers.get('authorization') || '').match(/^Bearer\s+([0-9a-f]{64})$/i); return m ? m[1] : null; };
+const NATIVE_ORIGINS = ['capacitor://localhost'];
+const cors = (origin) => ({ 'access-control-allow-origin': origin, 'access-control-allow-headers': 'content-type, authorization, x-client', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-max-age': '86400', vary: 'origin' });
 async function authed(req, env) {
-  const tok = cookie(req, 'sid');
+  const tok = bearer(req) || cookie(req, 'sid');
   if (!tok) return null;
   const s = await env.DB.prepare('SELECT user_id, exp FROM sessions WHERE id=?').bind(await sha(tok)).first();
   if (!s || s.exp < now()) return null;
@@ -785,6 +789,17 @@ async function uncategorizedReminder(env) {
 export default {
   async scheduled(event, env, ctx) { ctx.waitUntil(uncategorizedReminder(env)); },
   async fetch(req, env, ctx) {
+    const origin = req.headers.get('origin') || '';
+    if (!NATIVE_ORIGINS.includes(origin) || !new URL(req.url).pathname.startsWith('/api/')) return handle(req, env, ctx);
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
+    const res = await handle(req, env, ctx);
+    const out = new Response(res.body, res);
+    Object.entries(cors(origin)).forEach(([k, v]) => out.headers.set(k, v));
+    return out;
+  },
+};
+
+async function handle(req, env, ctx) {
     const url = new URL(req.url); const path = url.pathname;
     if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
     try {
@@ -821,7 +836,7 @@ export default {
         await env.DB.prepare('UPDATE users SET fails=0, locked_until=0 WHERE id=?').bind(u.id).run();
         const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
         await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), u.id, now() + 12 * 3600000).run();
-        return J({ ok: true }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
+        return J({ ok: true, ...(req.headers.get('x-client') === 'native' ? { token: tok } : {}) }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
       }
       if (path === '/api/pk/auth-options' && req.method === 'POST') {
         const ks = (await env.DB.prepare('SELECT id FROM passkeys').all()).results;
@@ -838,12 +853,12 @@ export default {
         const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
         await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), k.user_id, now() + 12 * 3600000).run();
         await env.DB.prepare('INSERT INTO login_log(login,ok,ip,at) VALUES(?,?,?,?)').bind('passkey', 1, req.headers.get('cf-connecting-ip') || '', now()).run();
-        return J({ ok: true }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
+        return J({ ok: true, ...(req.headers.get('x-client') === 'native' ? { token: tok } : {}) }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
       }
       const uid = await authed(req, env);
       if (!uid) return J({ error: 'auth' }, 401);
       if (path === '/api/logout') {
-        await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(await sha(cookie(req, 'sid'))).run();
+        await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(await sha(bearer(req) || cookie(req, 'sid'))).run();
         return J({ ok: true }, 200, { 'set-cookie': 'sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' });
       }
       if (path === '/api/password' && req.method === 'POST') {
@@ -852,7 +867,7 @@ export default {
         if (String(b.next || '').length < 8) return J({ error: 'too_short' }, 400);
         const salt = crypto.getRandomValues(new Uint8Array(16));
         await env.DB.prepare('UPDATE users SET pass_hash=?, pass_salt=? WHERE id=?').bind(await pbkdf2(String(b.next), salt), b64(salt), uid).run();
-        await env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').bind(uid, await sha(cookie(req, 'sid'))).run();
+        await env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').bind(uid, await sha(bearer(req) || cookie(req, 'sid'))).run();
         return J({ ok: true });
       }
       if (path === '/api/pk/reg-options' && req.method === 'POST') {
@@ -907,5 +922,4 @@ export default {
       console.log('error', path, String(e && e.stack || e));
       return J({ error: 'server', message: String(e).slice(0, 200) }, 500);
     }
-  },
-};
+}

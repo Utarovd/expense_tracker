@@ -1,14 +1,9 @@
 {
   "appId": "uz.inmanager.budget",
   "appName": "Budget",
-  "webDir": "www",
-  "server": {
-    "url": "https://budget.in-manager.uz",
-    "errorPath": "offline.html"
-  },
+  "webDir": "../public",
   "ios": {
     "contentInset": "never",
-    "limitsNavigationsToAppBoundDomains": true,
     "allowsLinkPreview": false,
     "appendUserAgent": "BudgetApp/1.0"
   }

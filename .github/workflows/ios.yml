@@ -5,7 +5,7 @@ name: iOS build
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/ios.yml']
+    paths: ['native/**', 'public/**', '.github/workflows/ios.yml']
   workflow_dispatch:
 
 permissions:
@@ -65,7 +65,7 @@ jobs:
           gh release create ios-latest Budget.ipa --title "Budget iOS (build ${{ github.run_number }})" \
             --notes "Unsigned build for AltStore. Built $(TZ=Asia/Tashkent date '+%d.%m %H:%M') Tashkent." --latest=false
 
-  # Проверка скриншотом: приложение в симуляторе iPhone открывает сайт (вход).
+  # Проверка скриншотом: приложение в симуляторе iPhone запускается (экран входа).
   sim-check:
     if: github.event_name == 'push'
     runs-on: macos-15
