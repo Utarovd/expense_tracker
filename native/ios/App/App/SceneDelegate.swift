@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import LocalAuthentication
+import WidgetKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -64,6 +65,7 @@ class MainViewController: CAPBridgeViewController {
         webView?.isOpaque = false
         webView?.backgroundColor = Brand.background
         webView?.scrollView.backgroundColor = Brand.background
+        bridge?.registerPluginInstance(BudgetNativePlugin())
     }
 }
 
@@ -80,7 +82,14 @@ final class AppLock {
     private var autoPrompt = false
 
     /// Face ID / Touch ID / код настроены на iPhone. Без кода замок не включается.
+    /// Переключатель в Settings приложения (по умолчанию включён).
+    static var enabled: Bool {
+        get { UserDefaults.standard.object(forKey: "lockEnabled") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "lockEnabled") }
+    }
+
     private var available: Bool {
+        guard AppLock.enabled else { return false }
         var err: NSError?
         return LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &err)
     }
@@ -204,5 +213,92 @@ final class AppLock {
             b.transform = .identity
             b.alpha = 1
         }
+    }
+}
+
+
+// MARK: - Общие данные с виджетом (App Group)
+
+enum SharedStore {
+    /// AltStore подписывает App Group своим ID и пишет его в Info.plist (ALTAppGroups).
+    static var groups: [String] {
+        var out = (Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]) ?? []
+        out.append("group.uz.inmanager.budget")
+        return out
+    }
+    static func write(_ json: String) {
+        for g in groups { UserDefaults(suiteName: g)?.set(json, forKey: "widget") }
+        UserDefaults.standard.set(json, forKey: "widget")
+    }
+}
+
+// MARK: - Мост для веб-части: вибрация, виджет, Face ID, ссылки budget://
+
+@objc(BudgetNativePlugin)
+public class BudgetNativePlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "BudgetNativePlugin"
+    public let jsName = "BudgetNative"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "haptic", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setWidget", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getLock", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setLock", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takeUrl", returnType: CAPPluginReturnPromise)
+    ]
+
+    private var pendingURL: String?
+    private let light = UIImpactFeedbackGenerator(style: .light)
+    private let medium = UIImpactFeedbackGenerator(style: .medium)
+    private let notify = UINotificationFeedbackGenerator()
+    private let select = UISelectionFeedbackGenerator()
+
+    @objc override public func load() {
+        NotificationCenter.default.addObserver(self, selector: #selector(openURL(_:)), name: .capacitorOpenURL, object: nil)
+        light.prepare()
+    }
+
+    @objc private func openURL(_ n: Notification) {
+        guard let obj = n.object as? [String: Any], let url = obj["url"] as? URL, url.scheme == "budget" else { return }
+        pendingURL = url.absoluteString
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self, let u = self.pendingURL else { return }
+            self.bridge?.triggerWindowJSEvent(eventName: "budgetopenurl", data: "{\"url\":\"\(u)\"}")
+        }
+    }
+
+    @objc func takeUrl(_ call: CAPPluginCall) {
+        let u = pendingURL
+        pendingURL = nil
+        call.resolve(["url": u ?? ""])
+    }
+
+    @objc func haptic(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            switch call.getString("style") ?? "light" {
+            case "medium": self.medium.impactOccurred()
+            case "success": self.notify.notificationOccurred(.success)
+            case "warning": self.notify.notificationOccurred(.warning)
+            case "error": self.notify.notificationOccurred(.error)
+            case "select": self.select.selectionChanged()
+            default: self.light.impactOccurred()
+            }
+            call.resolve()
+        }
+    }
+
+    @objc func setWidget(_ call: CAPPluginCall) {
+        guard let json = call.getString("json") else { return call.reject("json required") }
+        SharedStore.write(json)
+        WidgetCenter.shared.reloadAllTimelines()
+        call.resolve()
+    }
+
+    @objc func getLock(_ call: CAPPluginCall) {
+        call.resolve(["on": AppLock.enabled])
+    }
+
+    @objc func setLock(_ call: CAPPluginCall) {
+        AppLock.enabled = call.getBool("on") ?? true
+        call.resolve(["on": AppLock.enabled])
     }
 }

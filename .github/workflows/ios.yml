@@ -49,6 +49,11 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          # ad-hoc подпись только чтобы вложить entitlements (App Group для виджета); AltStore переподписывает своим ID
+          for x in Payload/App.app/PlugIns/*.appex; do codesign -f -s - --entitlements ios/App/BudgetWidget/BudgetWidget.entitlements "$x"; done
+          codesign -f -s - --entitlements ios/App/App/App.entitlements Payload/App.app
+          codesign -d --entitlements - Payload/App.app | head -20
+          ls Payload/App.app/PlugIns
           zip -qry Budget.ipa Payload
           ls -la Budget.ipa
       - uses: actions/upload-artifact@v4
@@ -101,6 +106,8 @@ jobs:
           xcrun simctl ui "$UDID" appearance light || true
           sleep 5
           xcrun simctl io "$UDID" screenshot sim-light.png
+          # уменьшенные копии в лог (для проверки без скачивания артефакта)
+          for f in sim-launch sim-light; do sips -Z 700 -s format jpeg -s formatOptions 60 $f.png --out $f.jpg >/dev/null; echo "IMG-BEGIN $f"; base64 -b 0 -i $f.jpg; echo; echo "IMG-END $f"; done
       - uses: actions/upload-artifact@v4
         with:
           name: sim-screenshots

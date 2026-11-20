@@ -35,6 +35,8 @@ function cookie(req, name) {
 // нативное приложение (iPhone) шлёт токен в заголовке Authorization: Bearer
 const bearer = (req) => { const m = (req.headers.get('authorization') || '').match(/^Bearer\s+([0-9a-f]{64})$/i); return m ? m[1] : null; };
 const NATIVE_ORIGINS = ['capacitor://localhost'];
+// приложение iPhone закрыто Face ID: вход держится 30 дней (сайт и PWA: 12 часов). Решение 20.11.
+const NATIVE_SESSION = 30 * 86400000;
 const cors = (origin) => ({ 'access-control-allow-origin': origin, 'access-control-allow-headers': 'content-type, authorization, x-client', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-max-age': '86400', vary: 'origin' });
 async function authed(req, env) {
   const tok = bearer(req) || cookie(req, 'sid');
@@ -835,7 +837,7 @@ async function handle(req, env, ctx) {
         }
         await env.DB.prepare('UPDATE users SET fails=0, locked_until=0 WHERE id=?').bind(u.id).run();
         const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
-        await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), u.id, now() + 12 * 3600000).run();
+        await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), u.id, now() + (req.headers.get('x-client') === 'native' ? NATIVE_SESSION : 12 * 3600000)).run();
         return J({ ok: true, ...(req.headers.get('x-client') === 'native' ? { token: tok } : {}) }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
       }
       if (path === '/api/pk/auth-options' && req.method === 'POST') {

@@ -8,6 +8,8 @@ const tryLS = (f) => { try { return f(); } catch (e) { return null; } };
 const NATIVE = location.protocol === 'capacitor:';
 const API_BASE = NATIVE ? 'https://budget.in-manager.uz' : '';
 const ntok = () => NATIVE ? tryLS(() => localStorage.getItem('ntok')) : null;
+// вызов нативной части (BudgetNative в SceneDelegate.swift); в браузере ничего не делает
+const nat = (method, opts = {}) => { try { return NATIVE && window.Capacitor && Capacitor.nativePromise ? Capacitor.nativePromise('BudgetNative', method, opts).catch(() => null) : Promise.resolve(null); } catch (e) { return Promise.resolve(null); } };
 const S = { user: null, db: {}, queue: {}, cursor: 0, space: null, route: '/', month: null, rates: null, me: null, online: navigator.onLine, syncing: false, lastSync: 0, q: '', accF: '', uncat: false, pending: 0, per: '1M', hide: tryLS(() => localStorage.getItem('hideAmt')) === '1' };
 TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,7 +24,7 @@ const idb = {
   async clear() { try { const d = await this.open(); d.transaction('kv', 'readwrite').objectStore('kv').clear(); } catch (e) { /* ignore */ } },
 };
 let persistT;
-const persist = () => { clearTimeout(persistT); persistT = setTimeout(() => idb.set('state', { db: S.db, queue: S.queue, cursor: S.cursor, user: S.user, space: S.space, rates: S.rates, me: S.me }), 200); };
+const persist = () => { clearTimeout(persistT); persistT = setTimeout(() => { idb.set('state', { db: S.db, queue: S.queue, cursor: S.cursor, user: S.user, space: S.space, rates: S.rates, me: S.me }); pushWidget(); }, 200); };
 const rows = (t) => Object.values(S.db[t]).filter(r => !r.deleted_at);
 const byId = (t, id) => S.db[t][id];
 function put(t, row) { row.updated_at = now(); S.db[t][row.id] = row; S.queue[t][row.id] = row; persist(); scheduleSync(); }
@@ -334,7 +336,8 @@ function quickOne(q, quiet) {
 let toastT;
 // отклик вибрацией: Android через vibrate, iPhone (Safari 18+) через системный переключатель
 let hapEl;
-function haptic() {
+function haptic(style) {
+  if (NATIVE) { nat('haptic', { style: style || 'light' }); return; }
   try {
     if (navigator.vibrate) { navigator.vibrate(12); return; }
     if (!hapEl) { hapEl = document.createElement('label'); hapEl.style.cssText = 'position:fixed;left:-99px;top:0;opacity:0;pointer-events:none'; hapEl.innerHTML = '<input type="checkbox" switch>'; document.body.appendChild(hapEl); }
@@ -758,6 +761,7 @@ function pgSettings() {
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto'; const me = S.me || {};
   return `<div class="top"><h1>Settings</h1></div>
   <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
+  ${NATIVE ? `<div class="card"><div class="row" style="cursor:default"><div class="grow"><b>Face ID lock</b><span class="sub">Ask for Face ID when the app opens</span></div><div class="sw ${S.lockOn === false ? '' : 'on'}" data-act="lock"></div></div></div>` : ''}
   <div class="card"><div class="lbl">Menu style</div><div class="seg" style="margin-top:8px;width:max-content">${[['glass', 'Liquid Glass'], ['solid', 'Solid']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('navstyle')) || 'glass') === k ? 'on' : ''}" data-act="navstyle" data-id="${k}">${n}</button>`).join('')}</div></div>
   ${NATIVE ? '' : `<div class="card"><div class="lbl">App icon</div><div class="icpick">${[['a', 'Wallet'], ['b', 'Donut'], ['c', 'Growth']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('appicon')) || 'a') === k ? 'on' : ''}" data-act="appicon" data-id="${k}"><img src="/icon-${k}-180.png" alt=""><span>${n}</span></button>`).join('')}</div><div class="sub" style="margin-top:10px">On iPhone the icon is saved when the app is added. To change it: delete the app from the Home Screen, open the site in Safari, then Share → Add to Home Screen.</div></div>`}
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
@@ -946,6 +950,7 @@ document.addEventListener('click', async (e) => {
     case 'mnext': S.month = shiftMonth(curMonth(), +id || 1); render(); break;
     case 'per': S.per = id; haptic(); render(); break;
     case 'trendm': S.month = id; S.per = '1M'; haptic(); render(); break;
+    case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic(); render(true); break; }
     case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic(); render(); break;
     case 'accf': S.accF = id; render(); break;
     case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/history'); break;
@@ -1057,6 +1062,32 @@ function applyTheme() {
   document.querySelectorAll('meta[name=theme-color]').forEach(mt => { mt.content = dark ? '#121316' : '#f5f1e8'; });
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => smoothTheme(applyTheme));
+// виджет на экране «Домой» (только приложение iPhone): готовые строки, скрытые суммы остаются *****
+let lastWidget = '';
+function pushWidget() {
+  if (!NATIVE) return;
+  try {
+    const sp0 = S.space; const spaces = rows('spaces');
+    const personal = (spaces.find(x => /personal/i.test(x.name || '')) || spaces[0] || {}).id;
+    if (personal) S.space = personal;
+    const d0 = Math.floor((now() + TZ) / 86400000) * 86400000 - TZ; const m = monthKey(now());
+    const today = S.user ? spentByRoot(m, S.space, [d0, d0 + 86400000]).total : 0; const month = S.user ? spentByRoot(m).total : 0;
+    const bud = budgetFor(null, m);
+    const w = { v: 1, signedIn: !!S.user, hidden: !!S.hide, balance: fmt(totalBase(), 'UZS'), today: fmt(today, 'UZS'), month: fmt(month, 'UZS'), zero: fmt(0, 'UZS'),
+      limit: bud ? fmt(bud.limit_amount, 'UZS') : '', pct: bud ? Math.round(month / bud.limit_amount * 100) : -1, day: dd(now()), monthKey: m, updated: now() };
+    S.space = sp0;
+    const j = JSON.stringify(w); if (j === lastWidget) return; lastWidget = j; nat('setWidget', { json: j });
+  } catch (e) { /* виджет не важнее приложения */ }
+}
+// ссылки из виджета: budget://add — открыть новую операцию
+async function takeNativeUrl() {
+  const r = await nat('takeUrl'); const u = r && r.url; if (!u || !S.user) return;
+  if (/^budget:\/\/add/.test(u)) { if (typeof ovEl !== 'undefined' && ovEl) closeSheet(); openTx(null); }
+}
+if (NATIVE) {
+  window.addEventListener('budgetopenurl', () => takeNativeUrl());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pushWidget(); });
+}
 async function logoutLocal() { S.user = null; TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; }); S.cursor = 0; S.space = null; S.me = null; await idb.clear(); closeSheet(); render(); }
 
 // ---------- старт ----------
@@ -1067,7 +1098,7 @@ async function boot(fresh) {
     if (st && st.user) { Object.assign(S, { db: { ...S.db, ...st.db }, queue: { ...S.queue, ...st.queue }, cursor: st.cursor || 0, user: st.user, space: st.space, rates: st.rates, me: st.me }); TABLES.forEach(t => { S.db[t] = S.db[t] || {}; S.queue[t] = S.queue[t] || {}; }); }
     S.route = curPath();
   }
-  ensureSpace(); render();
+  ensureSpace(); render(); if (NATIVE) { setTimeout(takeNativeUrl, 400); nat('getLock').then(r => { if (r) S.lockOn = r.on; }); }
   if (navigator.onLine) {
     try {
       const [me, rate] = await Promise.all([api('/api/me', {}, 10000), api('/api/rate', {}, 15000).catch(() => null)]);
