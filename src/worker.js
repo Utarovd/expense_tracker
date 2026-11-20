@@ -722,6 +722,7 @@ export default {
     if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
     try {
       // публичные: вебхуки
+      if (path.startsWith('/api/in/') && path !== '/api/in/' + env.WEBHOOK_SECRET) { await setMeta(env, 'bad_in', JSON.stringify({ at: now(), host: url.hostname, head: path.slice(8, 12) })); return J({ error: 'bad_url' }, 404); }
       if (path === '/api/in/' + env.WEBHOOK_SECRET && env.WEBHOOK_SECRET && req.method === 'GET') return J({ ok: true, last_received: Number(await getMeta(env, 'last_in')) || null });
       if (path === '/api/in/' + env.WEBHOOK_SECRET && env.WEBHOOK_SECRET && req.method === 'POST') return await webhook(req, env);
       if (path === '/api/tg' && req.method === 'POST') {
@@ -807,7 +808,7 @@ export default {
         const u = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(uid).first();
         const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();
         const pk = await env.DB.prepare('SELECT COUNT(*) c FROM passkeys WHERE user_id=?').bind(uid).first();
-        return J({ login: u.login, pk: pk.c, last_in: Number(await getMeta(env, 'last_in')) || null, hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
+        return J({ login: u.login, pk: pk.c, last_in: Number(await getMeta(env, 'last_in')) || null, bad_in: JSON.parse((await getMeta(env, 'bad_in')) || 'null'), hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
       }
       if (path === '/api/stamp') return J({ stamp: await getMeta(env, 'stamp') });
       if (path === '/api/sync' && req.method === 'POST') return J(await sync(env, await req.json()));
