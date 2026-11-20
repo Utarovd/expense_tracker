@@ -35,3 +35,20 @@ INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,f
   SELECT 'tx-2660-b', a.space_id, 'expense', a.id, 10000000, 'UZS', 1, 10000000, NULL, '', 'PAYME P2P UZCARD NA MC OSMON 0', CAST(strftime('%s','2026-11-20 14:13:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2011261913:100000.00:10039200.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
   FROM accounts a WHERE a.id='acc-card-2660';
 INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
+-- карта ***2660: название и категории по ответам Doniyor (20.11); срабатывает один раз, пока он сам ничего не менял
+UPDATE accounts SET name='UzCard Salary', updated_at=CAST(strftime('%s','now') AS INTEGER)*1000, synced_at=CAST(strftime('%s','now') AS INTEGER)*1000 WHERE id='acc-card-2660' AND name='Card ···2660';
+UPDATE transactions SET category_id=(SELECT id FROM categories WHERE space_id=transactions.space_id AND kind='income' AND parent_id IS NULL AND name='Salary' AND deleted_at IS NULL LIMIT 1), note='Zarplata', updated_at=CAST(strftime('%s','now') AS INTEGER)*1000, synced_at=CAST(strftime('%s','now') AS INTEGER)*1000 WHERE id='tx-2660-a' AND category_id IS NULL AND note='';
+UPDATE transactions SET category_id=COALESCE((SELECT id FROM categories WHERE space_id=transactions.space_id AND kind='expense' AND name='Car service' AND deleted_at IS NULL LIMIT 1),(SELECT id FROM categories WHERE space_id=transactions.space_id AND kind='expense' AND parent_id IS NULL AND name='Transport' AND deleted_at IS NULL LIMIT 1)), note='Мойка', updated_at=CAST(strftime('%s','now') AS INTEGER)*1000, synced_at=CAST(strftime('%s','now') AS INTEGER)*1000 WHERE id='tx-2660-b' AND category_id IS NULL AND note='';
+INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
+
+-- карта ***2660: три платежа, которые не дошли по СМС (20-21.11), добавлены вручную; та же СМС позже не задвоится (external_id)
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-c', a.space_id, 'expense', a.id, 3960000, 'UZS', 1, 3960000, NULL, '', 'PAYME OPLATA MUNIS', CAST(strftime('%s','2026-11-20 16:50:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2011262150:39600.00:9999600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2011262150:39600.00:9999600.00');
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-d', a.space_id, 'expense', a.id, 2800000, 'UZS', 1, 2800000, NULL, '', 'PAYME P2P', CAST(strftime('%s','2026-11-20 18:59:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2011262359:28000.00:9971600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2011262359:28000.00:9971600.00');
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-e', a.space_id, 'expense', a.id, 2400000, 'UZS', 1, 2400000, NULL, '', 'PAYME P2P', CAST(strftime('%s','2026-11-20 19:12:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2111260012:24000.00:9947600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2111260012:24000.00:9947600.00');
+INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
