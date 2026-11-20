@@ -1,0 +1,66 @@
+name: iOS build
+
+# Push в main с изменениями в native/: только проверка, что приложение собирается.
+# Ручной запуск (Run workflow, по команде «сделай сборку»): Budget.ipa в релиз "ios-latest".
+on:
+  push:
+    branches: [main]
+    paths: ['native/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: native/package-lock.json
+      - name: Select newest Xcode (Capacitor 8 needs Xcode 26+)
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+          xcodebuild -version | head -1 | awk '{ split($2, v, "."); if (v[1] < 26) { print "Xcode 26+ required"; exit 1 } }'
+      - run: npm ci
+      - run: npx cap sync ios
+      - name: Build (unsigned; AltStore signs it with your Apple ID)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -40
+          test -d build/Build/Products/Release-iphoneos/App.app
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry Budget.ipa Payload
+          ls -la Budget.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Budget-ipa
+          path: native/Budget.ipa
+          retention-days: 30
+      - name: Publish to release "ios-latest"
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-latest --yes --cleanup-tag || true
+          gh release create ios-latest Budget.ipa --title "Budget iOS (build ${{ github.run_number }})" \
+            --notes "Unsigned build for AltStore. Built $(TZ=Asia/Tashkent date '+%d.%m %H:%M') Tashkent." --latest=false

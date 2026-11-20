@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+    paths-ignore: ['native/**', '.github/workflows/ios.yml']
   workflow_dispatch:
 
 concurrency:
