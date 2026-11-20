@@ -451,7 +451,9 @@ async function ingest(env, ev) {
   if (sms && ev.type !== 'transfer') {
     const { results: all } = await env.DB.prepare('SELECT * FROM accounts WHERE space_id=? AND deleted_at IS NULL').bind(space).all();
     const humo = all.find(a => a.card_last4 === '7052'), ipak = all.find(a => a.card_last4 === '3153'), cash = all.find(a => a.type === 'cash');
-    const own = acc === undefined ? null : (humo && acc.id === humo.id) ? ipak : (ipak && acc.id === ipak.id) ? humo : null;
+    const ownOld = acc === undefined ? null : (humo && acc.id === humo.id) ? ipak : (ipak && acc.id === ipak.id) ? humo : null;
+    // все свои карты в сумах (в т.ч. новые): встречная СМС на другой своей карте превращает обе операции в один перевод
+    const owns = [ownOld, ...all.filter(a => a.id !== acc.id && a !== ownOld && a.card_last4 && a.type !== 'cash' && a.currency === 'UZS' && !a.hidden)].filter(Boolean);
     const pair = async (from, to, note) => {
       const ex = await env.DB.prepare("SELECT id FROM transactions WHERE type='transfer' AND account_id=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(from.id, -ev.amount, ts - 15 * 60000, ts + 15 * 60000).first();
       if (ex) { await touch(env); return { dup: true, text: 'merged' }; }
@@ -460,10 +462,10 @@ async function ingest(env, ev) {
       await env.DB.batch([leg(mine ? txId : id2, from, -ev.amount, mine), leg(mine ? id2 : txId, to, ev.amount, !mine)]); await touch(env);
       return { text: `🔁 Transfer: ${fmtMoney(ev.amount, 'UZS')} ${from.name} → ${to.name}` + await qoldiq(env, space, acc, ev), txId, noCat: true };
     };
-    if (own && (ev.currency || 'UZS') === 'UZS') {
+    for (const own of owns) if ((ev.currency || 'UZS') === 'UZS') {
       const out = ev.type === 'expense';
       const from = out ? acc : own, to = out ? own : acc;
-      if (/IPAK YULI M ULUGBEK|HUMO\s*2\s*UZCARD|UZCARD\s*2\s*HUMO/.test(m)) return pair(from, to, 'Between own cards');
+      if (own === ownOld && /IPAK YULI M ULUGBEK|HUMO\s*2\s*UZCARD|UZCARD\s*2\s*HUMO/.test(m)) return pair(from, to, 'Between own cards');
       const tl = await env.DB.prepare("SELECT id FROM transactions WHERE account_id=? AND type='transfer' AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(own.id, out ? ev.amount : -ev.amount, ts - 10 * 60000, ts + 10 * 60000).first();
       if (tl) { await touch(env); return { dup: true, text: 'merged' }; }
       // встречная операция на другой своей карте (та же сумма, ±10 мин): превращаем обе в перевод
