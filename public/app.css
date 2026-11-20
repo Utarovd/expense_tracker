@@ -458,3 +458,14 @@ button.catf.none{color:var(--mut)}
 .sdet .sdin{padding:0 74px 4px 20px} /* сумма подкатегории под суммой раздела */
 .sdet .sdr{padding:8px 0;border-bottom:1px solid var(--line)}
 .sdet .sdr:last-child{border-bottom:0}
+
+/* подсветка нажатия, аудит 20.11: у каждой нажимаемой вещи своя подсветка ровно по её форме */
+/* окно подтверждения: кнопки не сжимаются (иначе подсветка отходит от углов и разделителя), подсветка заполняет кнопку, углы обрезает само окно */
+.cfa button:active,.cfa button.tch{transform:none!important}
+.cfa button:active{background:transparent}
+/* стрелки месяца, фильтры History, иконки приложения, × шторки: кольцо по контуру, как у кнопок */
+.mnav button,.chip,.icpick img,.sheet .shx{outline:2px solid transparent;outline-offset:0;transition:outline-color .2s ease,transform .12s ease,background-color .2s ease,box-shadow .2s ease}
+@media (hover:hover) and (pointer:fine){.mnav button:hover,.chip:not(.on):hover,.icpick button:not(.on):hover img,.sheet .shx:hover{outline-color:var(--hovring)}}
+@media (hover:none){.mnav button.tch,.chip:not(.on).tch,.icpick button:not(.on).tch img,.sheet .shx.tch{outline-color:var(--hovring)}}
+.mnav button:active,.chip:active,.icpick button:active img{transform:scale(.97)}
+.chip{outline-offset:-2px} /* кольцо внутри: ряд фильтров прокручивается и обрезал бы внешнее кольцо */
