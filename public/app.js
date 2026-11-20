@@ -358,12 +358,12 @@ function ask(title, msg, okLabel = 'Delete') {
 }
 
 // ---------- роутинг ----------
-const MAIN = ['/', '/transactions', '/stats', '/profile'];
+const MAIN = ['/', '/history', '/stats', '/profile'];
 let slideDir = '';
-const PAGES = () => ({ '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rate': pgRate, '/profile/settings': pgSettings });
+const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rate': pgRate, '/profile/settings': pgSettings });
 // порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
 // старые адреса (до 20.11: /more, /accounts …) ведут на новые /profile/… — закладки и PWA продолжают работать
-const OLDP = { '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings' };
+const OLDP = { '/transactions': '/history', '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings' };
 const curPath = () => { const p = location.pathname.replace(/\/+$/, '') || '/'; const n = OLDP[p]; if (n) { history.replaceState({}, '', n + location.search); return n; } return p; };
 const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.length - 0.5 : -1;
 const dirTo = (a, b) => { const x = pgIdx(a), y = pgIdx(b); return x > -1 && y > -1 && x !== y ? (y > x ? 'pg-next' : 'pg-prev') : ''; };
@@ -491,7 +491,7 @@ function placePill() {
   S.pill = b;
 }
 function nav(on) {
-  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'History'], ['/stats', 'chart', 'Stats'], ['/profile', 'user', 'Profile']];
+  const it = [['/', 'home', 'Home'], ['/history', 'list', 'History'], ['/stats', 'chart', 'Stats'], ['/profile', 'user', 'Profile']];
   const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
   const h = ([p, i, n]) => `<a class="${p === on ? 'on' : ''}" tabindex="-1" aria-hidden="true"><span>${svg(i, 24)}</span>${n}</a>`;
   return `<div class="nav"><div><i class="navpill"><div class="navhi">${it.slice(0, 2).map(h).join('')}<div></div>${it.slice(2).map(h).join('')}</div></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
@@ -572,7 +572,8 @@ function selSlice(id) {
   const box = document.querySelector('.dwrap'); if (!box) return;
   const cur = box.dataset.sel || ''; const nx = cur === id ? '' : id; box.dataset.sel = nx; box.classList.toggle('has', !!nx);
   box.querySelectorAll('.sl').forEach(c => c.classList.toggle('on', c.dataset.id === nx));
-  box.querySelectorAll('.dc,.sdet').forEach(c => c.classList.toggle('on', c.dataset.for === nx));
+  box.querySelectorAll('.dc').forEach(c => c.classList.toggle('on', c.dataset.for === nx));
+  document.querySelectorAll('.sdet').forEach(c => c.classList.toggle('on', c.dataset.for === nx));
   document.querySelectorAll('.legend').forEach(l => l.classList.toggle('on', l.dataset.id === nx));
   haptic();
 }
@@ -611,10 +612,10 @@ function pgStats() {
   let acc = 0; const R = 70, C = 2 * Math.PI * R; const [a0, b0] = rng;
   const pct = (v) => Math.round(v / sp.total * 100);
   const donut = sp.total ? `<div class="donut"><svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const gap = items.length > 1 ? 1.5 : 0; const s = `<circle data-act="slice" data-id="${it.id}" class="sl" r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="34" stroke-dasharray="${Math.max(0.1, len - gap)} ${C - len + gap}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>
-    <div class="dc" data-for=""><b>${f(sp.total)}</b><span>total</span></div>${items.map((it, i) => `<div class="dc" data-for="${it.id}"><b style="color:${colOf(it, i)}">${pct(it.v)}%</b><span>${it.c ? esc(it.c.name) : 'No category'}</span></div>`).join('')}</div>`
-    + items.map((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? byId('categories', t.category_id).name : 'General'; subs[k] = (subs[k] || 0) + t.amount_base; } });
-      return `<div class="sdet" data-for="${it.id}"><div class="sdin"><div class="sdh"><b>${it.c ? esc(it.c.name) : 'No category'}</b><b>${f(it.v)}</b></div>${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="sdr"><span>${esc(k)}</span><span>${f(v)}</span></div>`).join('')}</div></div>`; }).join('')
-    : '<div class="sub">No expenses</div>';
+    <div class="dc" data-for="">${(() => { const t = f(sp.total), u = disp === 'USD' ? '' : ' UZS'; const n = u && t.endsWith(u) ? t.slice(0, -u.length) : t; return `<b class="dct${n.length > 9 ? ' sm' : ''}">${n}</b><span>${u ? 'UZS · total' : 'total'}</span>`; })()}</div>${items.map((it, i) => `<div class="dc" data-for="${it.id}"><b style="color:${colOf(it, i)}">${pct(it.v)}%</b><span>${it.c ? esc(it.c.name) : 'No category'}</span></div>`).join('')}</div>` : '';
+  const det = {}; if (sp.total) items.forEach((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? byId('categories', t.category_id).name : 'General'; subs[k] = (subs[k] || 0) + t.amount_base; } });
+      det[it.id] = `<div class="sdet" data-for="${it.id}"><div class="sdin">${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="sdr"><span>${esc(k)}</span><span>${f(v)}</span></div>`).join('')}</div></div>`; });
+  const donutOr = donut || '<div class="sub">No expenses</div>';
   // столбцы по дням
   const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
   rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
@@ -626,8 +627,8 @@ function pgStats() {
   <div class="seg per">${['1M', '3M', '1Y', 'All'].map(c => `<button class="${per === c ? 'on' : ''}" data-act="per" data-id="${c}">${c}</button>`).join('')}</div>
   ${per === 'All' ? '<div class="mnav"><b>All time</b></div>' : `<div class="mnav"><button data-act="mprev" data-id="${step}">‹</button><b>${perLabel(m, per)}</b><button data-act="mnext" data-id="${step}">›</button></div>`}
   <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
-  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big neg">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donut}</div>
-  ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span></div>`).join('')}</div>
+  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big neg">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donutOr}</div>
+  ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span><svg class="lga" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>${det[it.id] || ''}`).join('')}</div>
   ${trendChart(m, disp, rate)}
   ${per === '1M' ? `<div class="card"><div class="lbl">By day</div>${bars}</div>` : ''}`;
 }
@@ -927,11 +928,11 @@ document.addEventListener('click', async (e) => {
     case 'trendm': S.month = id; S.per = '1M'; haptic(); render(); break;
     case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic(); render(); break;
     case 'accf': S.accF = id; render(); break;
-    case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/transactions'); break;
+    case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/history'); break;
     case 'uncatf': S.uncat = !S.uncat; render(); break;
     case 'disp': S.dispCur = id; render(); break;
     case 'tx': openTx(id); break;
-    case 'acc': go('/transactions'); S.accF = id; render(); break;
+    case 'acc': go('/history'); S.accF = id; render(); break;
     case 'addtransfer': openTx(null, 'transfer'); break;
     case 'ftype': setFType(id); break;
     case 'txsave': saveTx(); break;

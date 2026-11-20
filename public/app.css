@@ -442,3 +442,15 @@ button.catf.none{color:var(--mut)}
 .cpi.cp0::before{left:-6px}
 @media (hover:hover) and (pointer:fine){.cph:hover::before,.cpi:hover::before{opacity:1}}
 @media (hover:none){.cph.tch::before,.cpi.tch::before{opacity:1;transition-duration:.08s}}
+
+/* Stats: сумма в центре кольца аккуратная, в одну строку; подкатегории раскрываются под выбранной строкой легенды (Doniyor 20.11) */
+.dc b.dct{font-size:18px;font-weight:700;letter-spacing:-.3px;white-space:nowrap;line-height:1.2}
+.dc b.dct.sm{font-size:15px}
+.dc{padding:0 30px}
+.dc span{font-size:12px}
+.lga{flex:none;color:var(--mut);margin-left:2px;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.legend.on .lga{transform:rotate(180deg)}
+.card .sdet{margin:0}
+.sdet .sdin{padding:0 74px 4px 20px} /* сумма подкатегории под суммой раздела */
+.sdet .sdr{padding:8px 0;border-bottom:1px solid var(--line)}
+.sdet .sdr:last-child{border-bottom:0}
