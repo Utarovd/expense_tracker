@@ -608,6 +608,8 @@ async function tgHandle(env, update) {
       return notify(env, res);
     } catch (e) { return tgSend(env, chat, 'Recognition error: ' + String(e).slice(0, 200)); }
   }
+  // вставленный текст банковской СМС (запасной путь, если Shortcuts не сработал)
+  { const ps = text.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean); const pp = ps.map(x => parseSms(x)); if (ps.length && pp.every(Boolean)) { for (const p of pp) { const res = await ingest(env, { src: 'sms', ...p }); if (res.dup) { await tgSend(env, chat, 'Already recorded: ' + (p.merchant || '').slice(0, 40)); continue; } await notify(env, res); } return; } }
   // несколько трат одним сообщением: «Компы 50к, снеки 20к» → две операции (как в Quick в приложении)
   const parts = []; String(text).split(/[;\n]+|,(?!\d)/).map(x => x.trim()).filter(Boolean).forEach(x => { if (/\d/.test(x) || !parts.length) parts.push(x); else parts[parts.length - 1] += ' ' + x; });
   const qs = parts.map(parseQuick);
@@ -680,6 +682,7 @@ async function readBody(req) {
 async function webhook(req, env) {
   const { raw, obj } = await readBody(req);
   let res;
+  await setMeta(env, 'last_in', now());
   const sms = (obj && (obj.sms || obj.text || obj.message || obj.body)) || (obj && obj.amount !== undefined ? null : raw);
   if (obj && obj.amount !== undefined && !obj.sms) {
     // Apple Wallet: {amount, merchant, card, currency?}
@@ -690,7 +693,8 @@ async function webhook(req, env) {
       res = await ingest(env, { src: 'wallet', type: /refund|return|возврат/i.test(String(obj.type || '')) ? 'income' : 'expense', merchant: String(obj.merchant || obj.name || '').trim(), ts: now(), amount: toMinor(n), currency: cur, card: String(obj.card || ''), last4: undefined });
     }
   } else if (sms) {
-    const p = /^\s*Xato\b/i.test(sms) ? 'ignore' : parseSms(sms);
+    const p = /^\s*Xato\b/i.test(sms) ? 'ignore' : /^\s*budgettest/i.test(sms) ? 'test' : parseSms(sms);
+    if (p === 'test') res = { text: '✅ Shortcuts reached the server. The SMS automation works.' }; else
     if (p === 'ignore') res = { dup: true, text: 'ignored' }; else
     if (p) res = await ingest(env, { src: 'sms', ...p });
     else { res = { text: '⚠ Couldn’t parse the SMS:\n' + String(sms).slice(0, 300) }; }
@@ -718,6 +722,7 @@ export default {
     if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
     try {
       // публичные: вебхуки
+      if (path === '/api/in/' + env.WEBHOOK_SECRET && env.WEBHOOK_SECRET && req.method === 'GET') return J({ ok: true, last_received: Number(await getMeta(env, 'last_in')) || null });
       if (path === '/api/in/' + env.WEBHOOK_SECRET && env.WEBHOOK_SECRET && req.method === 'POST') return await webhook(req, env);
       if (path === '/api/tg' && req.method === 'POST') {
         if (!env.TG_SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== env.TG_SECRET) return J({ error: 'forbidden' }, 403);
@@ -802,7 +807,7 @@ export default {
         const u = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(uid).first();
         const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();
         const pk = await env.DB.prepare('SELECT COUNT(*) c FROM passkeys WHERE user_id=?').bind(uid).first();
-        return J({ login: u.login, pk: pk.c, hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
+        return J({ login: u.login, pk: pk.c, last_in: Number(await getMeta(env, 'last_in')) || null, hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
       }
       if (path === '/api/stamp') return J({ stamp: await getMeta(env, 'stamp') });
       if (path === '/api/sync' && req.method === 'POST') return J(await sync(env, await req.json()));

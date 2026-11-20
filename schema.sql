@@ -52,3 +52,18 @@ INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,f
   SELECT 'tx-2660-e', a.space_id, 'expense', a.id, 2400000, 'UZS', 1, 2400000, NULL, '', 'PAYME P2P', CAST(strftime('%s','2026-11-20 19:12:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2111260012:24000.00:9947600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
   FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2111260012:24000.00:9947600.00');
 INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
+
+-- карта ***2660: ещё 4 платежа 21.11 01:38-01:44, не дошедшие по СМС
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-f', a.space_id, 'expense', a.id, 11000000, 'UZS', 1, 11000000, NULL, '', 'PAYME OPLATA MUNIS', CAST(strftime('%s','2026-11-20 20:38:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2111260138:110000.00:9837600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2111260138:110000.00:9837600.00');
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-g', a.space_id, 'expense', a.id, 22000000, 'UZS', 1, 22000000, NULL, '', 'PAYME OPLATA MUNIS', CAST(strftime('%s','2026-11-20 20:38:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2111260138:220000.00:9617600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2111260138:220000.00:9617600.00');
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-h', a.space_id, 'expense', a.id, 121000000, 'UZS', 1, 121000000, NULL, '', 'IYM UZCARD2UZCARD BEZ KOMI', CAST(strftime('%s','2026-11-20 20:42:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2111260142:1210000.00:8407600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2111260142:1210000.00:8407600.00');
+INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-2660-i', a.space_id, 'expense', a.id, 10000000, 'UZS', 1, 10000000, NULL, '', 'IYM UZCARD2UZCARD BEZ KOMI', CAST(strftime('%s','2026-11-20 20:44:00') AS INTEGER)*1000, NULL, 'sms', 'sms:2660:2111260144:100000.00:8307600.00', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.id='acc-card-2660' AND NOT EXISTS (SELECT 1 FROM transactions WHERE source='sms' AND external_id='sms:2660:2111260144:100000.00:8307600.00');
+INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);

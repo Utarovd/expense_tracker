@@ -58,3 +58,12 @@ Make a small Apple Pay payment. Within seconds the bot sends a message "💳 −
 
 ## Humo card
 SMS from 13131 (`HUMOCARD *7052: oplata ...`) go to the account **Humo card** (···7052). Payme screenshots sent to the bot also go to **Humo card** and are merged with the matching SMS (same amount within 15 minutes). "Ipak yuli bank konv" is recorded as a transfer to **Visa** (dollar part is an estimate).
+
+## If SMS do not arrive (fix, 21.11)
+Important: with **Notify When Run** off, Shortcuts shows nothing. Missing notifications do not prove the automation failed. Check **Profile → Settings, Telegram → URL for Shortcuts → Last SMS or Wallet received** in the app.
+
+Make it reliable with two automations (the server ignores duplicates, so both can fire):
+1. **By sender**: Message → Sender 5800 and 13131 → Message Contains empty → Run Immediately. Turn **Notify When Run** ON for a few days to see it fire.
+2. **By text**: Message → Sender empty → Message Contains `karta` → Run Immediately, same actions (Get Contents of URL, POST, JSON, key `sms` = Shortcut Input).
+
+Test: open the secret URL in Safari: it must show `"ok":true` and `last_received`. Then send yourself a message `budgettest karta` (Messages → your own number): the bot answers "Shortcuts reached the server". Fallback if the automation fails: copy the bank SMS text and paste it into the Telegram bot (several SMS separated by an empty line). Already recorded ones are skipped.
