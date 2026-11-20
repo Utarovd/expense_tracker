@@ -374,11 +374,13 @@ let lastRoute = null;
 let pgAnim = null;
 function slidePages(oldPg, box, sign) {
   const W = Math.min(window.innerWidth, 560) + 16, cv = 'transform ' + springCurve(W, 0);
-  const gh = document.createElement('div'); gh.style.cssText = `position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;z-index:15;pointer-events:none;will-change:transform`;
-  oldPg.style.transition = ''; oldPg.style.transform = ''; gh.appendChild(oldPg); document.body.appendChild(gh);
+  // на широком экране (Mac) переход виден только внутри колонки приложения: старая страница уезжает в «окно» шириной колонки и обрезается по нему
+  const col = $app.getBoundingClientRect(); const clip = document.createElement('div'); clip.style.cssText = `position:fixed;left:${col.left}px;top:0;width:${col.width}px;height:100%;overflow:hidden;z-index:15;pointer-events:none`;
+  const gh = document.createElement('div'); gh.style.cssText = `position:absolute;left:${box.left - col.left}px;top:${box.top}px;width:${box.width}px;will-change:transform`;
+  oldPg.style.transition = ''; oldPg.style.transform = ''; gh.appendChild(oldPg); clip.appendChild(gh); document.body.appendChild(clip);
   const nw = $app.firstElementChild; nw.style.transition = 'none'; nw.style.willChange = 'transform'; nw.style.transform = `translate3d(${-sign * W}px,0,0)`;
   void nw.offsetWidth; gh.style.transition = cv; gh.style.transform = `translate3d(${sign * W}px,0,0)`; nw.style.transition = cv; nw.style.transform = 'translate3d(0,0,0)';
-  const fin = () => { clearTimeout(tm); gh.remove(); if (nw.isConnected) { nw.style.transition = ''; nw.style.transform = ''; nw.style.willChange = ''; } if (pgAnim === fin) pgAnim = null; };
+  const fin = () => { clearTimeout(tm); clip.remove(); if (nw.isConnected) { nw.style.transition = ''; nw.style.transform = ''; nw.style.willChange = ''; } if (pgAnim === fin) pgAnim = null; };
   const tm = setTimeout(fin, 320); pgAnim = fin;
 }
 function render(soft) {
