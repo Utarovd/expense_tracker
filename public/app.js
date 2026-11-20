@@ -502,13 +502,18 @@ function nav(on) {
 const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
 const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${monthName(curMonth())}</b><button data-act="mnext">›</button></div>`;
 const srcIco = { sms: '📱', wallet: '', payme: '🧾', telegram: '✈️' };
-function txRow(t) {
-  const acc = byId('accounts', t.account_id); const isT = t.type === 'transfer';
+// перевод = одна строка (одна операция — одна карточка): оставляем расходную ногу, вторая показывается в подписи «откуда → куда»
+const oneTransfer = (list) => { const seen = new Set(); return list.filter(t => { if (t.type !== 'transfer' || !t.transfer_group_id) return true; if (seen.has(t.transfer_group_id)) return false;
+  const legs = rows('transactions').filter(x => x.transfer_group_id === t.transfer_group_id && !x.deleted_at); const out = legs.find(x => x.amount < 0) || t; if (out !== t && list.includes(out)) return false; seen.add(t.transfer_group_id); return true; }); };
+function txRow(t, merged) {
+  let acc = byId('accounts', t.account_id); const isT = t.type === 'transfer';
+  const leg2 = isT && merged && t.transfer_group_id ? rows('transactions').find(x => x.transfer_group_id === t.transfer_group_id && x.id !== t.id && !x.deleted_at) : null;
+  if (leg2) { const out = t.amount < 0 ? t : leg2, inn = t.amount < 0 ? leg2 : t; const fa = byId('accounts', out.account_id), ta = byId('accounts', inn.account_id); acc = { name: (fa ? fa.name : '?') + ' → ' + (ta ? ta.name : '?') }; t = out; }
   const title = isT ? 'Transfer' : (t.note || t.merchant || catPath(t.category_id) || 'Untitled');
   const sub = isT ? (t.note || '') : (catPath(t.category_id) || 'no category');
-  const sign = t.type === 'income' || (isT && t.amount > 0) ? '+' : '−'; const cls = isT ? 'trf' : sign === '+' ? 'pos' : 'neg';
+  const sign = leg2 ? '' : t.type === 'income' || (isT && t.amount > 0) ? '+' : '−'; const cls = isT ? 'trf' : sign === '+' ? 'pos' : 'neg';
   const src = t.source === 'wallet' ? ' · Wallet' : t.source === 'sms' ? ' · SMS' : t.source === 'payme' ? ' · Payme' : t.source === 'telegram' ? ' · bot' : '';
-  return `<div class="row" data-act="tx" data-id="${t.id}"><div class="ico">${isT ? svg('transfer') : catIcon(t.category_id)}</div><div class="grow"><b>${esc(title)}</b><span class="sub">${esc(sub)} · ${esc(acc ? acc.name : '?')} · ${hm(t.occurred_at)}${src}</span></div><div class="amt ${cls}">${sign}${fmt(Math.abs(t.amount), t.currency)}</div></div>`;
+  return `<div class="row" data-act="tx" data-id="${t.id}"><div class="ico">${isT ? svg('transfer') : catIcon(t.category_id)}</div><div class="grow"><b>${esc(title)}</b><span class="sub">${[sub, acc ? acc.name : '?', hm(t.occurred_at)].filter(Boolean).map(esc).join(' · ')}${src}</span></div><div class="amt ${cls}">${sign}${fmt(Math.abs(t.amount), t.currency)}</div></div>`;
 }
 
 // ---------- страницы ----------
@@ -544,7 +549,9 @@ function animateBalance() {
 function pgHome() {
   const m = monthKey(now()); const bud = budgetFor(null, m); const sp = spentByRoot(m);
   const accs = accounts().filter(a => !a.hidden); const tot = totalBase(); const rate = curRate();
-  const recent = rows('transactions').filter(t => t.space_id === S.space).sort((a, b) => b.occurred_at - a.occurred_at).slice(0, 8);
+  // Recent: только сегодня (Asia/Tashkent), последние 3 операции; перевод — одной строкой
+  const d0 = Math.floor((now() + TZ) / 86400000) * 86400000 - TZ;
+  const recent = oneTransfer(rows('transactions').filter(t => t.space_id === S.space && t.occurred_at >= d0 && t.occurred_at < d0 + 86400000).sort((a, b) => b.occurred_at - a.occurred_at)).slice(0, 3);
   const [, e] = monthRange(m); const daysLeft = Math.max(1, Math.ceil((e - now()) / 86400000));
   const pct = bud ? Math.min(100, Math.round(sp.total / bud.limit_amount * 100)) : 0;
   return `<div class="top"><h1>Home</h1>${spaceSwitch()}</div>
@@ -554,19 +561,19 @@ function pgHome() {
   <div class="card" data-go="/profile/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS', 1)} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   ${limitsCard(m, sp)}
   <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
-  <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || emptyState()}</div>`;
+  <div class="card"><div class="lbl">Recent</div>${recent.map(t => txRow(t, true)).join('') || '<div class="sub" style="padding:6px 0 2px">No payments today</div>'}</div>`;
 }
 function pgTrans() {
   const [a, b] = monthRange(curMonth()); const q = S.q.toLowerCase();
   const list = rows('transactions').filter(t => t.space_id === S.space && (S.uncat ? (t.type !== 'transfer' && !t.category_id) : (t.occurred_at >= a && t.occurred_at < b)) && (!S.accF || t.account_id === S.accF) &&
     (!q || (t.note + ' ' + t.merchant + ' ' + catPath(t.category_id)).toLowerCase().includes(q))).sort((x, y) => y.occurred_at - x.occurred_at);
-  const days = {}; list.forEach(t => { const k = dayLabel(t.occurred_at); (days[k] = days[k] || []).push(t); });
+  const days = {}; (S.accF ? list : oneTransfer(list)).forEach(t => { const k = dayLabel(t.occurred_at); (days[k] = days[k] || []).push(t); });
   const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount_base, 0);
   return `<div class="top"><h1>History</h1>${spaceSwitch()}</div>${mnav()}
   <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
   <input id="srch" class="f" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
   <div class="chips"><button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
-  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card" style="padding:4px 16px">${days[k].map(txRow).join('')}</div>`).join('') || `<div class="card">${emptyState()}</div>`}`;
+  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card" style="padding:4px 16px">${days[k].map(t => txRow(t, !S.accF)).join('')}</div>`).join('') || `<div class="card">${emptyState()}</div>`}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
