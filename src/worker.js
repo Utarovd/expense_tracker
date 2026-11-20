@@ -88,6 +88,7 @@ function upsertStmt(env, table, row, ts) {
 }
 async function sync(env, body) {
   await migrateCatsV2(env);
+  await migrateCatsV3(env);
   const ts = now();
   const stmts = [];
   for (const t of Object.keys(T)) {
@@ -211,6 +212,32 @@ const SEED_INCOME = [['Salary', '💰'], ['Business', '💼'], ['Gifts', '🎁']
 // ---------- перенос личных категорий после свадьбы (Doniyor 19.11), один раз, только пространство Personal ----------
 // Подкатегории переезжают с тем же id: операции, лимиты, правила слов и «магазин → категория» идут за ними.
 // Ничего не удаляется: убранные подкатегории без операций уходят в архив, с операциями остаются видимыми (о них пишем в бот).
+// Doniyor 20.11: убрать Nilufar из раздела Family (Nilufar теперь свой раздел). Один раз, только Personal.
+// Пустая подкатегория (без операций, лимитов, правил и магазинов) уходит в архив; иначе остаётся, бот пишет, что в ней есть
+async function migrateCatsV3(env) {
+  const lock = await env.DB.prepare("INSERT INTO meta(k,v) VALUES('cats_v3','run') ON CONFLICT(k) DO NOTHING").run();
+  if (!lock.meta?.changes) return;
+  try {
+    const c = await env.DB.prepare("SELECT c.* FROM categories c JOIN categories p ON p.id=c.parent_id JOIN spaces s ON s.id=c.space_id WHERE s.kind='personal' AND s.deleted_at IS NULL AND lower(p.name)='family' AND lower(c.name)='nilufar' AND c.deleted_at IS NULL AND c.archived=0 LIMIT 1").first();
+    if (!c) return setMeta(env, 'cats_v3', 'not found');
+    const n = async (sql) => (await env.DB.prepare(sql).bind(c.id).first()).n;
+    const tx = await n('SELECT COUNT(*) n FROM transactions WHERE category_id=? AND deleted_at IS NULL');
+    const bud = await n('SELECT COUNT(*) n FROM budgets WHERE category_id=? AND deleted_at IS NULL');
+    const shops = await n('SELECT COUNT(*) n FROM merchant_map WHERE category_id=?');
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE id='cat_rules' AND deleted_at IS NULL").first();
+    let rules = []; try { rules = JSON.parse(row?.value || '[]') || []; } catch (_) {}
+    const words = rules.filter(r => r.c === c.id).length;
+    const summary = { tx, bud, shops, words };
+    if (!tx && !bud && !shops && !words) {
+      const ts = now(); c.archived = 1; c.updated_at = ts;
+      await upsertStmt(env, 'categories', c, ts).run(); await touch(env);
+      return setMeta(env, 'cats_v3', JSON.stringify({ archived: true, ...summary }));
+    }
+    await setMeta(env, 'cats_v3', JSON.stringify({ archived: false, ...summary }));
+    const parts = [tx && `${tx} operations`, bud && `${bud} limits`, words && `${words} word rules`, shops && `${shops} shops`].filter(Boolean).join(', ');
+    try { for (const ch of await chats(env)) await tgSend(env, ch, `🗂 Family › Nilufar has ${parts}, so it is not removed yet. Tell where to move them.`); } catch (_) {}
+  } catch (e) { console.log('cats_v3 failed', e); await env.DB.prepare("DELETE FROM meta WHERE k='cats_v3'").run(); }
+}
 async function migrateCatsV2(env) {
   const lock = await env.DB.prepare("INSERT INTO meta(k,v) VALUES('cats_v2','run') ON CONFLICT(k) DO NOTHING").run();
   if (!lock.meta?.changes) return;
@@ -298,7 +325,7 @@ async function seed(env) {
     SEED_INCOME.forEach(([name, icon], i) =>
       st.push(insertRow(env, 'categories', { id: rid(), space_id: space, parent_id: null, name, kind: 'income', sort: 100 + i, icon, archived: 0, updated_at: ts })));
   }
-  st.push(env.DB.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('cats_v2','new user')")); // новому пользователю личный перенос не нужен
+  st.push(env.DB.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('cats_v2','new user')"), env.DB.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('cats_v3','new user')")); // новому пользователю личный перенос не нужен
   st.push(insertRow(env, 'settings', { id: 'rate_mode', value: 'auto', updated_at: ts }));
   st.push(insertRow(env, 'settings', { id: 'rate_kind', value: 'buy', updated_at: ts }));
   for (let i = 0; i < st.length; i += 50) await env.DB.batch(st.slice(i, i + 50));
