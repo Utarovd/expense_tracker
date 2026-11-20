@@ -358,14 +358,17 @@ function ask(title, msg, okLabel = 'Delete') {
 }
 
 // ---------- роутинг ----------
-const MAIN = ['/', '/transactions', '/stats', '/more'];
+const MAIN = ['/', '/transactions', '/stats', '/profile'];
 let slideDir = '';
-const PAGES = () => ({ '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/accounts': pgAccounts, '/more': pgMore, '/budget': pgBudget, '/categories': pgCats, '/rate': pgRate, '/settings': pgSettings });
+const PAGES = () => ({ '/': pgHome, '/transactions': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rate': pgRate, '/profile/settings': pgSettings });
 // порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
+// старые адреса (до 20.11: /more, /accounts …) ведут на новые /profile/… — закладки и PWA продолжают работать
+const OLDP = { '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings' };
+const curPath = () => { const p = location.pathname.replace(/\/+$/, '') || '/'; const n = OLDP[p]; if (n) { history.replaceState({}, '', n + location.search); return n; } return p; };
 const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.length - 0.5 : -1;
 const dirTo = (a, b) => { const x = pgIdx(a), y = pgIdx(b); return x > -1 && y > -1 && x !== y ? (y > x ? 'pg-next' : 'pg-prev') : ''; };
 function go(path, replace) { slideDir = dirTo(S.route, path); if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
-window.addEventListener('popstate', () => { slideDir = dirTo(S.route, location.pathname); closeSheet(); S.route = location.pathname; render(); });
+window.addEventListener('popstate', () => { const np = curPath(); slideDir = dirTo(S.route, np); closeSheet(); S.route = curPath(); render(); });
 // превью иконок в Settings не пересоздаются при перерисовке: те же загруженные картинки переносятся в новую разметку, без мигания
 const ICN = {};
 function keepIcons() { document.querySelectorAll('#app .icpick img').forEach(im => { const k = im.getAttribute('src'); const c = ICN[k]; if (c && c !== im) im.replaceWith(c); else if (!c) ICN[k] = im; }); }
@@ -388,7 +391,7 @@ function render(soft) {
   if (S.route === '/login') { S.route = '/'; history.replaceState({}, '', '/'); }
   const r = S.route;
   const fn = PAGES()[r] || pgHome;
-  const main = MAIN.includes(r) ? r : '/more';
+  const main = MAIN.includes(r) ? r : '/profile';
   const scroll = soft ? window.scrollY : 0;
   const focus = document.activeElement && document.activeElement.id;
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
@@ -483,12 +486,12 @@ function setPill(b, anim) {
 }
 const onTab = (path) => { const hs = document.querySelectorAll('.navhi a'); document.querySelectorAll('.nav a[data-go]').forEach((a, n) => { const on = a.dataset.go === path; a.classList.toggle('on', on); if (hs[n]) hs[n].classList.toggle('on', on); }); };
 function placePill() {
-  const main = MAIN.includes(S.route) ? S.route : '/more'; const b = tabBox(main); if (!b) return;
+  const main = MAIN.includes(S.route) ? S.route : '/profile'; const b = tabBox(main); if (!b) return;
   if (S.pill && Math.abs(S.pill.x - b.x) > 1) { setPill(S.pill, false); requestAnimationFrame(() => requestAnimationFrame(() => setPill(b, true))); } else setPill(b, false);
   S.pill = b;
 }
 function nav(on) {
-  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'History'], ['/stats', 'chart', 'Stats'], ['/more', 'user', 'Profile']];
+  const it = [['/', 'home', 'Home'], ['/transactions', 'list', 'History'], ['/stats', 'chart', 'Stats'], ['/profile', 'user', 'Profile']];
   const a = ([p, i, n]) => `<a href="${p}" data-go="${p}" class="${p === on ? 'on' : ''}"><span>${svg(i, 24)}</span>${n}</a>`;
   const h = ([p, i, n]) => `<a class="${p === on ? 'on' : ''}" tabindex="-1" aria-hidden="true"><span>${svg(i, 24)}</span>${n}</a>`;
   return `<div class="nav"><div><i class="navpill"><div class="navhi">${it.slice(0, 2).map(h).join('')}<div></div>${it.slice(2).map(h).join('')}</div></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
@@ -513,7 +516,7 @@ function limitsCard(m, sp) {
   const rs = cats('expense').filter(c => !c.parent_id && !c.archived).map(c => { const b = budgetFor(c.id, m); return b && b.limit_amount > 0 ? { c, b, v: sp.out[c.id] || 0 } : null; }).filter(Boolean)
     .map(x => ({ ...x, p: Math.round(x.v / x.b.limit_amount * 100) })).sort((a, b) => b.p - a.p).slice(0, 3);
   if (!rs.length) return '';
-  return `<div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Category limits</div>${rs.map(x => `<div class="lim"><div class="limh"><div class="ico sm">${rootIcon(x.c, 18)}</div><b class="grow">${esc(x.c.name)}</b><span class="sub">${fmt(x.v, 'UZS', 1)} / ${fmt(x.b.limit_amount, 'UZS')}</span></div><div class="bar"><i class="${x.p >= 90 ? 'gr-red' : x.p >= 50 ? 'gr-ylw' : 'gr-grn'}" style="width:${Math.min(100, x.p)}%"></i></div><div class="sub limp">${x.p}%${x.p >= 100 ? ' · over the limit' : x.p >= 90 ? ' · almost at the limit' : ''}</div></div>`).join('')}</div>`;
+  return `<div class="card" data-go="/profile/budget" style="cursor:pointer"><div class="lbl">Category limits</div>${rs.map(x => `<div class="lim"><div class="limh"><div class="ico sm">${rootIcon(x.c, 18)}</div><b class="grow">${esc(x.c.name)}</b><span class="sub">${fmt(x.v, 'UZS', 1)} / ${fmt(x.b.limit_amount, 'UZS')}</span></div><div class="bar"><i class="${x.p >= 90 ? 'gr-red' : x.p >= 50 ? 'gr-ylw' : 'gr-grn'}" style="width:${Math.min(100, x.p)}%"></i></div><div class="sub limp">${x.p}%${x.p >= 100 ? ' · over the limit' : x.p >= 90 ? ' · almost at the limit' : ''}</div></div>`).join('')}</div>`;
 }
 const emptyState = () => `<div class="empty"><svg width="112" height="90" viewBox="0 0 120 96" fill="none" aria-hidden="true"><ellipse cx="60" cy="88" rx="38" ry="5" fill="var(--line)"/><rect x="22" y="24" width="76" height="52" rx="12" fill="#1b2f5e"/><path d="M22 38c0-7 5-12 12-12h52c7 0 12 5 12 12" stroke="#5b7bc4" stroke-width="3" stroke-linecap="round"/><rect x="70" y="46" width="30" height="18" rx="7" fill="#f5c518"/><circle cx="79" cy="55" r="3.2" fill="#1b2f5e"/><path d="M95 8l2.5 6 6 2.5-6 2.5-2.5 6-2.5-6-6-2.5 6-2.5z" fill="#f5c518"/><path d="M27 6l1.5 3.5L32 11l-3.5 1.5L27 16l-1.5-3.5L22 11l3.5-1.5z" fill="#f5c518" opacity=".7"/></svg><b>Your expenses will appear here</b><span class="sub">Add one with the yellow + or send it to the bot</span></div>`;
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -545,7 +548,7 @@ function pgHome() {
   <div class="quick"><input id="qa" placeholder="Quick: “lunch 58000” or “taxi 25k”" enterkeyhint="done" autocomplete="off"><button data-act="qa">＋</button></div>
   <div class="card hero"><button class="eyeb" data-act="hide" aria-label="${S.hide ? 'Show amounts' : 'Hide amounts'}">${svg(S.hide ? 'eye' : 'eyeoff', 22)}</button><div class="lbl">Balance</div><div class="big" id="bal" data-v="${tot}">${fmt(S.balShown ?? tot, 'UZS')}</div><div class="sub">≈ $${S.hide ? '*****' : (tot / rate / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} at ${fmtRate(rate)}${S.rates && S.rates.fetched_at ? ' · updated ' + dd(S.rates.fetched_at) + ' ' + hm(S.rates.fetched_at) : ''}</div></div>
   ${uncatList().length ? `<div class="card" data-act="uncat" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><b>${uncatList().length} without category</b><div class="sub">Tap to sort them</div></div><span class="sub">›</span></div>` : ''}
-  <div class="card" data-go="/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS', 1)} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
+  <div class="card" data-go="/profile/budget" style="cursor:pointer"><div class="lbl">Monthly budget</div>${bud ? `<div style="display:flex;justify-content:space-between;font-weight:600;margin-top:4px"><span>${fmt(sp.total, 'UZS', 1)} / ${fmt(bud.limit_amount, 'UZS')}</span><span class="lbl">${pct}%</span></div><div class="bar"><i class="${sp.total > bud.limit_amount ? 'over' : ''}" style="width:${pct}%"></i></div><div class="sub">Left ${fmt(bud.limit_amount - sp.total, 'UZS')} · ${daysLeft} d</div>` : `<div class="sub" style="margin-top:6px">No limit set. Spent: ${fmt(sp.total, 'UZS')}. Tap to set.</div>`}</div>
   ${limitsCard(m, sp)}
   <div class="card">${accs.map(a => `<div class="row" data-act="acc" data-id="${a.id}"><div class="ico">${accIcon(a)}</div><div class="grow"><b>${esc(a.name)}</b>${a.currency === 'USD' ? '<span class="sub">USD</span>' : ''}</div><div class="amt">${a.currency === 'USD' ? fmt(balance(a), 'USD') : fmt(balance(a), 'UZS')}</div></div>`).join('') || '<div class="sub">No accounts</div>'}</div>
   <div class="card"><div class="lbl">Recent</div>${recent.map(txRow).join('') || emptyState()}</div>`;
@@ -635,7 +638,7 @@ function pgAccounts() {
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/accounts', 'card', 'Accounts'], ['/budget', 'target', 'Budget & limits'], ['/categories', 'grid', 'Categories'], ['/rate', 'rate', 'USD rate'], ['/settings', 'sliders', 'Settings, Telegram']];
+  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings, Telegram']];
   return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
@@ -1040,7 +1043,7 @@ async function boot(fresh) {
   if (!fresh) {
     const st = await idb.get('state');
     if (st && st.user) { Object.assign(S, { db: { ...S.db, ...st.db }, queue: { ...S.queue, ...st.queue }, cursor: st.cursor || 0, user: st.user, space: st.space, rates: st.rates, me: st.me }); TABLES.forEach(t => { S.db[t] = S.db[t] || {}; S.queue[t] = S.queue[t] || {}; }); }
-    S.route = location.pathname;
+    S.route = curPath();
   }
   ensureSpace(); render();
   if (navigator.onLine) {
@@ -1079,7 +1082,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   const W = () => Math.min(window.innerWidth, 560);
   const cur = () => $app.firstElementChild;
   const off = (j, i) => (j > i ? 1 : -1) * (W() + 16);
-  const nbrs = () => { const i = MAIN.indexOf(S.route); if (i < 0) return PAGES()[S.route] ? [MAIN.indexOf('/more')] : []; return [i - 1, i + 1].filter(j => j >= 0 && j < MAIN.length); };
+  const nbrs = () => { const i = MAIN.indexOf(S.route); if (i < 0) return PAGES()[S.route] ? [MAIN.indexOf('/profile')] : []; return [i - 1, i + 1].filter(j => j >= 0 && j < MAIN.length); };
   const myI = () => MAIN.includes(S.route) ? MAIN.indexOf(S.route) : MAIN.length; // вложенная страница стоит правее Profile
   function dropPre() { Object.values(pre.els).forEach(n => n.remove()); pre.els = {}; pre.key = ''; }
   function prebuild() {
@@ -1105,7 +1108,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   }, { passive: false });
   function moveX(t) { const dx = t.clientX - st.x0;
     // на вложенной странице Profile свайп вправо возвращает в Profile, влево некуда
-    const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf('/more') : -1) : i + (dx < 0 ? 1 : -1);
+    const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf('/profile') : -1) : i + (dx < 0 ? 1 : -1);
     st.j = pre.els[j] ? j : -1; st.nb = pre.els[j] || null; st.dx = st.nb ? dx : 0; trackV(st, st.dx);
     mv(cur(), st.dx, ''); if (st.nb) mv(st.nb, st.dx + (dx < 0 ? W() + 16 : -W() - 16), '');
     const o = pre.els[sub ? -1 : i + (dx < 0 ? -1 : 1)]; if (o) mv(o, off(sub ? -1 : i + (dx < 0 ? -1 : 1), sub ? MAIN.length : i), '');
@@ -1119,7 +1122,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const done = !!s0.nb && flingDone(s0.dx, s0.v || 0, W() * 0.3);
     const cv = springCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0);
     mv(c, done ? sign * (W() + 16) : 0, cv); if (s0.nb) mv(s0.nb, done ? 0 : -sign * (W() + 16), cv);
-    const here = MAIN.includes(S.route) ? S.route : '/more'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
+    const here = MAIN.includes(S.route) ? S.route : '/profile'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
     onTab(done ? MAIN[s0.j] : here); if (done) haptic();
     const fin = () => { clearTimeout(tm); pending = null;
       if (done) { slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = MAIN[s0.j]; history[back ? 'replaceState' : 'pushState']({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); dropPre(); }
@@ -1287,10 +1290,10 @@ function syncClr() {
     const nv = document.querySelector('.nav'); if (nv) nv.classList.remove('drag');
     if (!d0.started) return;
     justDragged = true; setTimeout(() => { justDragged = false; }, 50);
-    const path = d0.target || (MAIN.includes(S.route) ? S.route : '/more');
+    const path = d0.target || (MAIN.includes(S.route) ? S.route : '/profile');
     const el = document.querySelector('.navpill'); if (el) { const tb = tabBox(path); if (tb) { if (d0.lt && performance.now() - d0.lt > 80) d0.v = 0; const x0 = d0.cx - tb.w / 2; setPill(tb, springCurve(tb.x - x0, d0.v || 0)); S.pill = tb; } }
     haptic();
-    if (path !== (MAIN.includes(S.route) ? S.route : '/more')) setTimeout(() => go(path), 0); else onTab(path);
+    if (path !== (MAIN.includes(S.route) ? S.route : '/profile')) setTimeout(() => go(path), 0); else onTab(path);
   }
   document.addEventListener('pointerup', stop); document.addEventListener('pointercancel', stop);
   window.addEventListener('click', (e) => { if (justDragged && e.target.closest('.nav')) { e.preventDefault(); e.stopPropagation(); justDragged = false; } }, true);
