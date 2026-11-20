@@ -412,8 +412,8 @@ function parseSms(text) {
   let type = null;
   let kindX;
   if (/naqd pul kirim/.test(k)) kindX = 'cashin';
-  if (/chiqim|to'?lov|xarid|yechish|payment|purchase|platezh|oplata|spisanie/.test(k)) type = 'expense';
-  else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish|popoln|zachisl|postupl|vozvrat/.test(k)) type = 'income';
+  if (/chiqim|to'?lov|xarid|yechish|payment|purchase|platezh|oplata|spisanie|perevod\s+s\s+kart/.test(k)) type = 'expense';
+  else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish|popoln|zachisl|postupl|vozvrat|perevod\s+na\s+kart/.test(k)) type = 'income';
   if (!type) return null;
   const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
   return { type, kind: kindX, merchant: merchant.trim(), ts, last4, amount: toMinor(parseNum(amt)), currency: cur.toUpperCase(), balance: bal ? toMinor(parseNum(bal)) : null, ext: `sms:${last4}:${dd}${mm}${yy}${HH}${MM}:${amt}:${bal || ''}` };
@@ -500,7 +500,13 @@ async function ingest(env, ev) {
   if (mapped) { const c = await env.DB.prepare('SELECT c.name, p.name AS pn FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE c.id=?').bind(mapped).first(); if (c) catName = (c.pn ? c.pn + ' › ' : '') + c.name; }
   const sign = ev.type === 'income' ? '+' : '−';
   const text = `${ev.type === 'income' ? '📥' : '💳'} ${sign}${fmtMoney(ev.amount, acc.currency)} · ${ev.merchant || '—'}${converted}\n${acc.name} · ${fmtTs(ts)}${catName ? '\n📂 ' + catName : ''}` + await qoldiq(env, space, acc, ev);
-  return { text, txId, kind: ev.type === 'income' ? 'income' : 'expense', mapped: !!mapped, space };
+  let xferOpts;
+  if (sms && ev.type === 'expense' && (ev.currency || 'UZS') === 'UZS' && /UZCARD\s*2\s*UZCARD|HUMO\s*2\s*UZCARD|UZCARD\s*2\s*HUMO/.test(m)) {
+    // перевод «карта → карта»: встречная СМС может не дойти (iOS обрабатывает одну автоматизацию за раз), спрашиваем в боте
+    const { results: others } = await env.DB.prepare("SELECT id,name FROM accounts WHERE space_id=? AND deleted_at IS NULL AND id<>? AND card_last4 IS NOT NULL AND card_last4<>'' AND type<>'cash' AND currency='UZS' AND hidden=0 ORDER BY sort").bind(space, acc.id).all();
+    xferOpts = others;
+  }
+  return { text, txId, kind: ev.type === 'income' ? 'income' : 'expense', mapped: !!mapped, space, xferOpts };
 }
 async function qoldiq(env, space, acc, ev) {
   if (ev.balance == null) return '';
@@ -537,7 +543,8 @@ async function notify(env, res) {
     const space = res.space;
     markup = res.mapped ? { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + res.txId + ':' + res.kind }]] } : await catKeyboard(env, space, res.kind, res.txId, null);
   }
-  const text = res.txId && !res.noCat && !res.mapped ? res.text + '\n\nWhich category?' : res.text;
+  if (res.xferOpts?.length && res.txId && markup?.inline_keyboard) markup.inline_keyboard = [...res.xferOpts.slice(0, 3).map(o => [{ text: '🔁 Transfer to my ' + o.name, callback_data: 'x:' + res.txId + ':' + o.id }]), ...markup.inline_keyboard];
+  const text = res.txId && !res.noCat && !res.mapped ? res.text + '\n\nWhich category? Or is it a transfer to your own card?' : res.text;
   for (const c of await chats(env)) await tg(env, 'sendMessage', { chat_id: c, text, reply_markup: markup });
 }
 async function tgSend(env, chat, text, extra) { return tg(env, 'sendMessage', { chat_id: chat, text, ...extra }); }
@@ -642,6 +649,16 @@ async function tgCallback(env, cq) {
     const kind = act === 'b' ? id : tx.type === 'income' ? 'income' : 'expense';
     const kb = await catKeyboard(env, tx.space_id, kind, txId, act === 'p' ? id : null);
     return tg(env, 'editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: kb });
+  }
+  if (act === 'x') {
+    const to = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND deleted_at IS NULL').bind(id).first();
+    if (!to || tx.type !== 'expense') return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n')[0] + '\n— already a transfer or changed' });
+    const from = await env.DB.prepare('SELECT * FROM accounts WHERE id=?').bind(tx.account_id).first();
+    const g = rid(), t = now();
+    await env.DB.prepare("UPDATE transactions SET type='transfer', amount=?, amount_base=?, category_id=NULL, transfer_group_id=?, note='Between own cards', updated_at=?, synced_at=? WHERE id=?").bind(-tx.amount, -tx.amount, g, t, t, txId).run();
+    await env.DB.batch([insertRow(env, 'transactions', { id: rid(), space_id: tx.space_id, type: 'transfer', account_id: to.id, amount: tx.amount, currency: 'UZS', fx_rate: 1, amount_base: tx.amount, note: 'Between own cards', merchant: tx.merchant, occurred_at: tx.occurred_at, transfer_group_id: g, source: 'sms_leg', external_id: null })]);
+    await touch(env);
+    return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: `🔁 Transfer: ${fmtMoney(tx.amount, 'UZS')} ${from?.name || ''} → ${to.name}` });
   }
   if (act === 'n') return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '') + '\n— left as is' });
   if (act === 'y') {
