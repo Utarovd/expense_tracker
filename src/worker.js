@@ -496,31 +496,42 @@ async function ingest(env, ev) {
   const mapped = ev.merchant ? ((await env.DB.prepare('SELECT category_id FROM merchant_map WHERE merchant=?').bind(norm(ev.merchant)).first())?.category_id || await ruleCat(env, space, ev.merchant, ev.type === 'income' ? 'income' : 'expense')) : null;
   stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: ev.type, account_id: acc.id, amount: ev.amount, ...mm, category_id: mapped || null, note: ev.note || '', merchant: ev.merchant || '', occurred_at: ts, source: ev.src === 'sms' ? 'sms' : ev.src, external_id: ev.ext || null }));
   await env.DB.batch(stmts); await touch(env);
-  const gapNote = sms && ev.balance != null && acc.currency === 'UZS' ? await reconcileGap(env, space, acc, ev) : '';
+  const gapR = sms && ev.balance != null && acc.currency === 'UZS' ? await reconcileGap(env, space, acc, ev) : {};
+  const gapNote = gapR.note || '';
   let catName = '';
   if (mapped) { const c = await env.DB.prepare('SELECT c.name, p.name AS pn FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE c.id=?').bind(mapped).first(); if (c) catName = (c.pn ? c.pn + ' › ' : '') + c.name; }
   const sign = ev.type === 'income' ? '+' : '−';
   const text = (gapNote ? gapNote + '\n' : '') + `${ev.type === 'income' ? '📥' : '💳'} ${sign}${fmtMoney(ev.amount, acc.currency)} · ${ev.merchant || '—'}${converted}\n${acc.name} · ${fmtTs(ts)}${catName ? '\n📂 ' + catName : ''}` + await qoldiq(env, space, acc, ev);
-  return { text, txId, kind: ev.type === 'income' ? 'income' : 'expense', mapped: !!mapped, space };
+  return { text, txId, kind: ev.type === 'income' ? 'income' : 'expense', mapped: !!mapped, space, gapAsk: gapR.ask };
 }
 // сверка по остатку из СМС: если в банке на карте не хватает/лишняя сумма ровно как у недавней операции на другой своей карте,
 // значит вторая СМС перевода потерялась (Shortcuts обрабатывает одну за раз): достраиваем вторую ногу и склеиваем в перевод
 async function reconcileGap(env, space, acc, ev) {
   try {
-    const b = (await balances(env, space)).find(x => x.id === acc.id); if (!b) return '';
-    const gap = ev.balance - b.bal; if (!gap) return '';
+    const b = (await balances(env, space)).find(x => x.id === acc.id); if (!b) return {};
+    const gap = ev.balance - b.bal; if (!gap) return {};
     const { results: others } = await env.DB.prepare("SELECT id,name FROM accounts WHERE space_id=? AND deleted_at IS NULL AND id<>? AND card_last4 IS NOT NULL AND card_last4<>'' AND type<>'cash' AND currency='UZS'").bind(space, acc.id).all();
-    if (!others.length) return '';
+    if (!others.length) return {};
     const want = gap > 0 ? 'expense' : 'income'; const amt = Math.abs(gap);
-    const ph = others.map(() => '?').join(',');
-    const cand = await env.DB.prepare(`SELECT * FROM transactions WHERE account_id IN (${ph}) AND type=? AND amount=? AND currency='UZS' AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ? ORDER BY occurred_at DESC LIMIT 1`).bind(...others.map(o => o.id), want, amt, ev.ts - 12 * 3600000, ev.ts + 12 * 3600000).first();
-    if (!cand) return '';
-    const g = rid(), t = now(); const from = want === 'expense' ? others.find(o => o.id === cand.account_id) : acc, to = want === 'expense' ? acc : others.find(o => o.id === cand.account_id);
-    await env.DB.prepare("UPDATE transactions SET type='transfer', amount=?, amount_base=?, category_id=NULL, transfer_group_id=?, note='Between own cards', updated_at=?, synced_at=? WHERE id=?").bind(want === 'expense' ? -amt : amt, want === 'expense' ? -amt : amt, g, t, t, cand.id).run();
-    await env.DB.batch([insertRow(env, 'transactions', { id: rid(), space_id: space, type: 'transfer', account_id: acc.id, amount: want === 'expense' ? amt : -amt, currency: 'UZS', fx_rate: 1, amount_base: want === 'expense' ? amt : -amt, note: 'Between own cards', merchant: cand.merchant, occurred_at: cand.occurred_at, transfer_group_id: g, source: 'sms_leg', external_id: null })]);
-    await touch(env);
-    return `🔁 The balance showed a missed SMS: ${fmtMoney(amt, 'UZS')} ${from?.name || ''} → ${to?.name || ''} is now one transfer.`;
-  } catch (e) { return ''; }
+    const ph = others.map(() => '?').join(','); const TOL = 100000; // 1 000 UZS в минимальных единицах
+    const find = (lo, hi) => env.DB.prepare(`SELECT * FROM transactions WHERE account_id IN (${ph}) AND type=? AND amount BETWEEN ? AND ? AND currency='UZS' AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ? ORDER BY ABS(amount-?) ASC, occurred_at DESC LIMIT 1`).bind(...others.map(o => o.id), want, lo, hi, ev.ts - 12 * 3600000, ev.ts + 12 * 3600000, amt).first();
+    const cand = await find(amt, amt);
+    if (cand) {
+      const g = rid(), t = now(); const from = want === 'expense' ? others.find(o => o.id === cand.account_id) : acc, to = want === 'expense' ? acc : others.find(o => o.id === cand.account_id);
+      await env.DB.prepare("UPDATE transactions SET type='transfer', amount=?, amount_base=?, category_id=NULL, transfer_group_id=?, note='Between own cards', updated_at=?, synced_at=? WHERE id=?").bind(want === 'expense' ? -amt : amt, want === 'expense' ? -amt : amt, g, t, t, cand.id).run();
+      await env.DB.batch([insertRow(env, 'transactions', { id: rid(), space_id: space, type: 'transfer', account_id: acc.id, amount: want === 'expense' ? amt : -amt, currency: 'UZS', fx_rate: 1, amount_base: want === 'expense' ? amt : -amt, note: 'Between own cards', merchant: cand.merchant, occurred_at: cand.occurred_at, transfer_group_id: g, source: 'sms_leg', external_id: null })]);
+      await touch(env);
+      return { note: `🔁 The balance showed a missed SMS: ${fmtMoney(amt, 'UZS')} ${from?.name || ''} → ${to?.name || ''} is now one transfer.` };
+    }
+    // почти совпало (разница до 1 000 UZS: комиссия): не угадываем, спрашиваем; комиссия бывает только со стороны списания (списано больше, чем пришло)
+    const near = want === 'expense' ? await find(amt + 1, amt + TOL) : await find(amt - TOL, amt - 1);
+    if (!near) return {};
+    const other = others.find(o => o.id === near.account_id); const fee = want === 'expense' ? near.amount - amt : amt - near.amount;
+    const q = want === 'expense'
+      ? `The balance of ${acc.name} grew by ${fmtMoney(amt, 'UZS')}. Close to the ${fmtMoney(near.amount, 'UZS')} spent from ${other?.name || ''} at ${fmtTs(near.occurred_at)} (difference ${fmtMoney(fee, 'UZS')}, a fee?). Is it a transfer?`
+      : `The balance of ${acc.name} dropped by ${fmtMoney(amt, 'UZS')}. Close to the ${fmtMoney(near.amount, 'UZS')} received on ${other?.name || ''} at ${fmtTs(near.occurred_at)} (difference ${fmtMoney(fee, 'UZS')}, a fee?). Is it a transfer?`;
+    return { ask: { q, rows: [[{ text: `🔁 Transfer + fee ${fmtMoney(fee, 'UZS')}`, callback_data: `f:${near.id}:${acc.id}:${gap}` }], [{ text: 'Keep as expense', callback_data: `k:${near.id}` }]] } };
+  } catch (e) { return {}; }
 }
 async function qoldiq(env, space, acc, ev) {
   if (ev.balance == null) return '';
@@ -557,8 +568,9 @@ async function notify(env, res) {
     const space = res.space;
     markup = res.mapped ? { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + res.txId + ':' + res.kind }]] } : await catKeyboard(env, space, res.kind, res.txId, null);
   }
-  if (res.xferOpts?.length && res.txId && markup?.inline_keyboard) markup.inline_keyboard = [...res.xferOpts.slice(0, 3).map(o => [{ text: '🔁 Transfer to my ' + o.name, callback_data: 'x:' + res.txId + ':' + o.id }]), ...markup.inline_keyboard];
-  const text = res.txId && !res.noCat && !res.mapped ? res.text + '\n\nWhich category?' : res.text;
+  if (res.gapAsk && markup?.inline_keyboard) markup.inline_keyboard = [...res.gapAsk.rows, ...markup.inline_keyboard];
+  let text = res.txId && !res.noCat && !res.mapped ? res.text + '\n\nWhich category?' : res.text;
+  if (res.gapAsk) text += '\n\n❓ ' + res.gapAsk.q;
   for (const c of await chats(env)) await tg(env, 'sendMessage', { chat_id: c, text, reply_markup: markup });
 }
 async function tgSend(env, chat, text, extra) { return tg(env, 'sendMessage', { chat_id: chat, text, ...extra }); }
@@ -654,7 +666,7 @@ async function sameMerchantUncategorized(env, tx) {
   return results.filter(r => norm(r.merchant) === key);
 }
 async function tgCallback(env, cq) {
-  const [act, txId, id] = (cq.data || '').split(':');
+  const [act, txId, id, gapArg] = (cq.data || '').split(':');
   const chat = cq.message.chat.id; const mid = cq.message.message_id;
   const tx = await env.DB.prepare('SELECT * FROM transactions WHERE id=?').bind(txId).first();
   await tg(env, 'answerCallbackQuery', { callback_query_id: cq.id });
@@ -663,6 +675,28 @@ async function tgCallback(env, cq) {
     const kind = act === 'b' ? id : tx.type === 'income' ? 'income' : 'expense';
     const kb = await catKeyboard(env, tx.space_id, kind, txId, act === 'p' ? id : null);
     return tg(env, 'editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: kb });
+  }
+  if (act === 'k') return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n❓')[0] + '\n— kept as an expense' });
+  if (act === 'f') {
+    const acc = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND deleted_at IS NULL').bind(id).first();
+    const gap = parseInt(gapArg, 10);
+    const okType = gap > 0 ? 'expense' : 'income';
+    if (!acc || !gap || tx.type !== okType) return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n❓')[0] + '\n— already handled' });
+    const amt = Math.abs(gap); const g = rid(), t = now();
+    const other = await env.DB.prepare('SELECT * FROM accounts WHERE id=?').bind(tx.account_id).first();
+    const fee = gap > 0 ? tx.amount - amt : amt - tx.amount; if (!(fee > 0)) return;
+    const base = (aid, type, amount, note, src, extra = {}) => insertRow(env, 'transactions', { id: rid(), space_id: tx.space_id, type, account_id: aid, amount, currency: 'UZS', fx_rate: 1, amount_base: amount, note, merchant: tx.merchant, occurred_at: tx.occurred_at, source: src, external_id: null, ...extra });
+    if (gap > 0) {
+      // acc получил amt, с другой карты списано tx.amount: перевод amt + комиссия
+      await env.DB.prepare("UPDATE transactions SET type='transfer', amount=?, amount_base=?, category_id=NULL, transfer_group_id=?, note='Between own cards', updated_at=?, synced_at=? WHERE id=?").bind(-amt, -amt, g, t, t, txId).run();
+      await env.DB.batch([base(acc.id, 'transfer', amt, 'Between own cards', 'sms_leg', { transfer_group_id: g }), base(tx.account_id, 'expense', fee, 'Transfer fee', 'sms_leg', { merchant: 'Transfer fee' })]);
+    } else {
+      // acc потерял amt, на другой карте пришло tx.amount: перевод tx.amount и комиссия на acc
+      await env.DB.prepare("UPDATE transactions SET type='transfer', category_id=NULL, transfer_group_id=?, note='Between own cards', updated_at=?, synced_at=? WHERE id=?").bind(g, t, t, txId).run();
+      await env.DB.batch([base(acc.id, 'transfer', -tx.amount, 'Between own cards', 'sms_leg', { transfer_group_id: g }), base(acc.id, 'expense', fee, 'Transfer fee', 'sms_leg', { merchant: 'Transfer fee' })]);
+    }
+    await touch(env);
+    return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n❓')[0] + `\n🔁 Transfer recorded, fee ${fmtMoney(fee, 'UZS')} saved as an expense` });
   }
   if (act === 'x') {
     const to = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND deleted_at IS NULL').bind(id).first();
@@ -732,7 +766,7 @@ async function webhook(req, env) {
     if (p) res = await ingest(env, { src: 'sms', ...p });
     else { res = { text: '⚠ Couldn’t parse the SMS:\n' + String(sms).slice(0, 300) }; }
   } else res = { text: '' };
-  await env.DB.prepare('INSERT INTO import_log(source,raw,result,at) VALUES(?,?,?,?)').bind(obj?.amount !== undefined ? 'wallet' : 'sms', raw.slice(0, 1000), (res.dup ? res.text : res.text || '').slice(0, 300), now()).run();
+  await env.DB.prepare('INSERT INTO import_log(source,raw,result,at) VALUES(?,?,?,?)').bind(obj?.amount !== undefined ? 'wallet' : 'sms', raw.slice(0, 1000), ((res.dup ? res.text : res.text || '') + (res.gapAsk ? ' ❓ ' + res.gapAsk.q : '')).slice(0, 600), now()).run();
   if (res.text && !res.dup) await notify(env, res);
   return J({ ok: true, result: res.dup ? res.text : 'recorded' });
 }
