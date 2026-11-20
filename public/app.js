@@ -366,7 +366,7 @@ function ask(title, msg, okLabel = 'Delete') {
     el.innerHTML = `<div class="cfb" role="alertdialog"><b>${esc(title)}</b>${msg ? `<p>${esc(msg)}</p>` : ''}<div class="cfa"><button data-r="0">Cancel</button><button data-r="1" class="dng">${esc(okLabel)}</button></div></div>`;
     const done = (v) => { document.removeEventListener('keydown', key, true); el.classList.remove('open'); setTimeout(() => el.remove(), 250); res(v); };
     const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(false); } if (e.key === 'Enter') { e.preventDefault(); done(true); } };
-    el.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('button'); if (b) done(b.dataset.r === '1'); else if (e.target === el) done(false); });
+    el.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('button'); if (b) { b.classList.add('prs'); done(b.dataset.r === '1'); } else if (e.target === el) done(false); });
     document.addEventListener('keydown', key, true);
     document.body.appendChild(el); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
   });

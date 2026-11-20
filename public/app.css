@@ -462,7 +462,8 @@ button.catf.none{color:var(--mut)}
 /* подсветка нажатия, аудит 20.11: у каждой нажимаемой вещи своя подсветка ровно по её форме */
 /* окно подтверждения: кнопки не сжимаются (иначе подсветка отходит от углов и разделителя), подсветка заполняет кнопку, углы обрезает само окно */
 .cfa button:active,.cfa button.tch{transform:none!important}
-.cfa button:active{background:transparent}
+/* нажатие как в iOS: кнопка заливается целиком (углы обрезает окно), заливка держится, пока окно гаснет */
+.cfa button:active,.cfa button.tch,.cfa button.prs{background-color:var(--line)!important;transition-duration:.12s}
 /* стрелки месяца, фильтры History, иконки приложения, × шторки: кольцо по контуру, как у кнопок */
 .mnav button,.chip,.icpick img,.sheet .shx{outline:2px solid transparent;outline-offset:0;transition:outline-color .2s ease,transform .12s ease,background-color .2s ease,box-shadow .2s ease}
 @media (hover:hover) and (pointer:fine){.mnav button:hover,.chip:not(.on):hover,.icpick button:not(.on):hover img,.sheet .shx:hover{outline-color:var(--hovring)}}
