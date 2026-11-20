@@ -1068,7 +1068,15 @@ async function boot(fresh) {
   }
 }
 window.addEventListener('scroll', () => { const sb = document.querySelector('.sbar'); if (sb) sb.classList.toggle('on', window.scrollY > 6); }, { passive: true });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => 0);
+if ('serviceWorker' in navigator) {
+  // приложение, открытое из фона, тоже получает новую версию: при возврате проверяем обновление,
+  // а когда новая версия встала — тихо перезагружаем страницу (если не открыто окно и не идёт ввод)
+  const had = !!navigator.serviceWorker.controller; let pendingReload = false;
+  const reloadIfIdle = () => { if (ovEl || document.querySelector('.cp,.cf') || (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) { pendingReload = true; return; } location.reload(); };
+  navigator.serviceWorker.register('/sw.js').then(reg => { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { reg.update().catch(() => 0); if (pendingReload) reloadIfIdle(); } }); }).catch(() => 0);
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) reloadIfIdle(); });
+  setInterval(() => { if (pendingReload && document.visibilityState === 'visible') reloadIfIdle(); }, 5000);
+}
 boot();
 
 // доводка после отпускания пальца: начальная скорость анимации = скорость пальца, дальше мягкое торможение (300 мс)
