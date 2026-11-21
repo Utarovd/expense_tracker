@@ -212,6 +212,14 @@ const cats = (kind) => rows('categories').filter(c => c.space_id === S.space && 
 const monthKey = (ts) => { const d = new Date(ts + TZ); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
 const curMonth = () => S.month || (S.month = monthKey(now()));
 const monthRange = (m) => { const [y, mo] = m.split('-').map(Number); return [Date.UTC(y, mo - 1, 1) - TZ, Date.UTC(y, mo, 1) - TZ]; };
+// окно «6 месяцев» стоит на месте; выбранный месяц только подсвечивается. Сдвигается, если месяц вышел за окно
+// или нажат один из двух самых ранних месяцев (тогда видно предыдущие) — Doniyor 21.11
+function trWin(key, m) {
+  S.trE = S.trE || {}; const nm = monthKey(now()); let e = S.trE[key] || nm;
+  if (m > e) e = m; else if (m < shiftMonth(e, -5)) e = shiftMonth(m, 5);
+  if (e > nm && m <= nm) e = nm; S.trE[key] = e; return e;
+}
+function trPick(key, m) { S.trE = S.trE || {}; const e = S.trE[key] || monthKey(now()); if (m <= shiftMonth(e, -4)) { const nm = monthKey(now()); let ne = shiftMonth(m, 2); if (ne > nm) ne = nm; S.trE[key] = ne; } }
 const shiftMonth = (m, d) => { const [y, mo] = m.split('-').map(Number); const x = new Date(Date.UTC(y, mo - 1 + d, 1)); return x.getUTCFullYear() + '-' + String(x.getUTCMonth() + 1).padStart(2, '0'); };
 const MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthName = (m) => MN[+m.split('-')[1] - 1] + ' ' + m.split('-')[0];
@@ -620,8 +628,8 @@ function pgCatD() {
 function catSummary(c, fam, list) {
   const m = curMonth(), kind = c.kind === 'income' ? 'income' : 'expense', inc = kind === 'income';
   const sumM = (x) => { const [a, b] = monthRange(x); let v = 0; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === kind && fam.has(t.category_id) && t.occurred_at >= a && t.occurred_at < b) v += t.amount_base; }); return v; };
-  const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(m, -i)); const vals = ms.map(x => ({ m: x, v: sumM(x) }));
-  const tot = vals[5].v, prev = vals[4].v, n = list.filter(t => t.type === kind).length; const dp = prev ? Math.round((tot - prev) / prev * 100) : null;
+  const E = trWin('cd', m); const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(E, -i)); const vals = ms.map(x => ({ m: x, v: sumM(x) }));
+  const tot = sumM(m), prev = sumM(shiftMonth(m, -1)), n = list.filter(t => t.type === kind).length; const dp = prev ? Math.round((tot - prev) / prev * 100) : null;
   const col = colOf({ c: rootOf(c.id) }, 0); const mx = Math.max(1, ...vals.map(v => v.v)); const H = 100, top = 22; const avg = vals.reduce((x, v) => x + v.v, 0) / 6; const ay = top + H - avg / mx * H;
   const bars = vals.map((v, i) => { const he = v.v / mx * H; const cur = v.m === m; return `<g data-act="trendh" data-id="${v.m}" style="cursor:pointer"><rect x="${i * 50}" y="0" width="50" height="${top + H + 24}" fill="transparent"/><rect x="${i * 50 + 11}" y="${top + H - he}" width="28" height="${he}" rx="5" fill="${col}" opacity="${cur ? 1 : .35}"/><text x="${i * 50 + 25}" y="${top + H - he - 6}" text-anchor="middle" class="tv${cur ? ' on' : ''}">${v.v ? shortAmt(v.v, 'UZS', 1) : ''}</text><text x="${i * 50 + 25}" y="${top + H + 17}" text-anchor="middle" class="tm${cur ? ' on' : ''}">${MSH(v.m)}</text></g>`; }).join('');
   const good = inc ? dp > 0 : dp < 0;
@@ -715,7 +723,7 @@ function shortAmt(minor, disp, rate) {
   return (disp === 'USD' ? '$' : '') + s.replace('.0', '');
 }
 function trendChart(m, disp, rate, T = 'expense') {
-  const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(m, -i));
+  const E = trWin('st', m); const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(E, -i));
   const vals = ms.map(x => { const [a, b] = monthRange(x); let e = 0, inc = 0; rows('transactions').forEach(t => { if (t.space_id === S.space && t.occurred_at >= a && t.occurred_at < b) { if (t.type === 'expense') e += t.amount_base; else if (t.type === 'income') inc += t.amount_base; } }); return { m: x, e, inc }; });
   if (T === 'income') vals.forEach(v => { v.e = v.inc; });
   const mx = Math.max(1, ...vals.map(v => v.e)); const H = 100, top = 22;
@@ -1223,14 +1231,14 @@ document.addEventListener('click', async (e) => {
     case 'mprev': S.month = shiftMonth(curMonth(), -(+id || 1)); render(); break;
     case 'mnext': S.month = shiftMonth(curMonth(), +id || 1); render(); break;
     case 'per': S.per = id; haptic('select'); render(); break;
-    case 'trendm': S.month = id; S.per = '1M'; haptic('select'); render(); break;
+    case 'trendm': trPick('st', id); S.month = id; S.per = '1M'; haptic('select'); render(); break;
     case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic('select'); render(true); break; }
     case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic('select'); render(); break;
     case 'accf': S.accF = id; render(); break;
-    case 'catgo': S.catD = id; haptic('select'); go('/stats/cat'); break;
+    case 'catgo': S.catD = id; if (S.trE) delete S.trE.cd; haptic('select'); go('/stats/cat'); break;
     case 'catclr': S.catF = ''; haptic('select'); render(); break;
     case 'catf': if (e.target.closest('.cfx')) { S.catF = ''; haptic('select'); render(); break; } { const b = document.createElement('button'); b.dataset.cf = '_cf'; b.dataset.kind = ''; F = { ...F, _cf: S.catF || '' }; openCatPicker(b, (cid) => { S.catF = cid; S.uncat = false; render(); }, 'All categories'); } break;
-    case 'trendh': S.month = id; haptic('select'); render(); break;
+    case 'trendh': trPick('cd', id); S.month = id; haptic('select'); render(); break;
     case 'statt': S.statT = id; haptic('select'); render(); break;
     case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/history'); break;
     case 'uncatf': S.uncat = !S.uncat; render(); break;
