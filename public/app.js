@@ -743,11 +743,11 @@ function byDayChart(m, disp, rate, T) {
   rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === T && t.occurred_at >= a && t.occurred_at < b) { const d = Math.floor((t.occurred_at - a) / 864e5); days[d] += t.amount_base; cnt[d]++; } });
   const today = Math.floor((now() - a) / 864e5); const passed = Math.max(0, Math.min(nd, today + 1));
   const dv = (v) => disp === 'USD' ? v / 100 / rate : v / 100; // в единицах показа
-  const step = niceStep(Math.max(...days.map(dv), 1) / 4); const mx = step * 4;
+  const mx = Math.max(...days.map(dv), 1) / 0.9; const step = niceStep(mx / 4); // пик = 90% высоты, линии сетки по круглым шагам ниже верха
   const L = 30, W = 300, H = 120, top = 8, VH = H + top + 18; const bw = (W - L) / nd;
   const y = (v) => top + H - Math.min(1, dv(v) / mx) * H; const tot = days.reduce((x, v) => x + v, 0); const avg = passed ? tot / passed : 0;
   const toMinor = (u) => disp === 'USD' ? u * rate * 100 : u * 100;
-  let g = ''; for (let k = 0; k <= 4; k++) { const yy = top + H - k / 4 * H; g += `<line class="gl" x1="${L}" x2="${W}" y1="${yy}" y2="${yy}"/><text x="${L - 4}" y="${yy + 3}" text-anchor="end">${k ? shortAmt(toMinor(step * k), disp, rate) : '0'}</text>`; }
+  let g = ''; for (let k = 0; k * step <= mx + 1e-9; k++) { const yy = top + H - k * step / mx * H; g += `<line class="gl" x1="${L}" x2="${W}" y1="${yy}" y2="${yy}"/><text x="${L - 4}" y="${yy + 3}" text-anchor="end">${k ? shortAmt(toMinor(step * k), disp, rate) : '0'}</text>`; }
   const dow = (d) => new Date(a + d * 864e5 + TZ).getUTCDay();
   const sel = S.bdSel && S.bdSel.m === m && S.bdSel.T === T ? S.bdSel.d : -1;
   const bars = days.map((v, d) => { const we = dow(d) === 0 || dow(d) === 6; const h = v ? Math.max(1.5, top + H - y(v)) : 0;
@@ -786,7 +786,7 @@ function pgStats() {
   // подкатегории раскрытого раздела: нажатие открывает History с фильтром по этой подкатегории (и графиком по месяцам)
   const chv = '<svg class="sdc" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
   const det = {}; if (sp.total) items.forEach((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === T && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? t.category_id : '_gen'; subs[k] = (subs[k] || 0) + t.amount_base; } });
-      const open = it.id !== '_none';
+      const open = it.id !== '_none' && Object.keys(subs).length > 1; // «All in …» только если подкатегорий больше одной
       det[it.id] = `<div class="sdet" data-for="${it.id}"><div class="sdin">${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => k === '_gen' || !byId('categories', k) ? `<div class="sdr"><span>General</span><span>${f(v)}</span><i class="sdc0"></i></div>` : `<div class="sdr go" data-act="catgo" data-id="${k}"><span>${esc(byId('categories', k).name)}</span><span>${f(v)}</span>${chv}</div>`).join('')}${open ? `<div class="sdr go sdall" data-act="catgo" data-id="${it.id}"><span>All in ${esc(it.c ? it.c.name : '')}</span><span></span>${chv}</div>` : ''}</div></div>`; });
   const donutOr = donut || `<div class="sub">${T === 'income' ? 'No income' : 'No expenses'}</div>`;
   const bud = per === '1M' ? budgetFor(null, m) : null;

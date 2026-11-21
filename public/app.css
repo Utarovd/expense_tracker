@@ -613,3 +613,35 @@ html{touch-action:manipulation}
 .bdleg i.ln{height:0;width:14px;border-top:1.5px dashed var(--mut);background:none!important;border-radius:0;vertical-align:3px}
 .bdst{display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--mut);text-align:center}
 .bdst b{display:block;color:var(--tx);font-size:14px}
+
+/* подсветка строк подкатегорий в Stats, как у остальных строк */
+.sdet .sdr.go{position:relative;isolation:isolate}
+.sdet .sdr.go::before{content:"";position:absolute;top:2px;bottom:2px;left:-10px;right:-10px;border-radius:12px;background:var(--hov);opacity:0;z-index:-1;pointer-events:none;transition:opacity .25s ease}
+@media (hover:hover) and (pointer:fine){.sdet .sdr.go:hover::before{opacity:1}}
+@media (hover:none){.sdet .sdr.go.tch::before{opacity:1}}
+/* b111: подсветка = вся нажимаемая область. Строка в карточке подсвечивается от края до края карточки,
+   между разделителями; первая и последняя строка повторяют скругление карточки. Касание в поле карточки рядом
+   со строкой тоже нажимает строку (псевдоэлемент принадлежит строке). */
+.card{--cpx:18px;--cpt:18px;--cpb:18px;--cr:21px}
+.txcard{--cpx:14px;--cpt:0px;--cpb:0px}
+.card .row[data-act]::before,.card .row[data-go]::before{left:calc(-1 * var(--cpx));right:calc(-1 * var(--cpx));top:0;bottom:-1px;border-radius:0;pointer-events:auto}
+.card .row.rtop::before{top:0}
+.card>.row:first-child::before,.card>.dz:first-child>.row:first-child::before{top:calc(-1 * var(--cpt));border-top-left-radius:var(--cr);border-top-right-radius:var(--cr)}
+.card>.row:last-child::before,.card>.dz:last-child>.row:last-child::before{bottom:calc(-1 * var(--cpb));border-bottom-left-radius:var(--cr);border-bottom-right-radius:var(--cr)}
+.card>.row:last-child,.card>.dz:last-child>.row:last-child{border-bottom:0}
+.dr.dragging::before,.dr.dragging.tch::before{opacity:0!important}
+/* подкатегории в Stats: вся строка между разделителями */
+.sdet .sdr.go::before{top:0;bottom:-1px;left:-20px;right:-22px;border-radius:0;pointer-events:auto}
+.sdet .sdr.go:first-child::before{border-top-left-radius:10px;border-top-right-radius:10px}
+.sdet .sdr.go:last-child::before{bottom:0;border-bottom-left-radius:10px;border-bottom-right-radius:10px}
+/* Rules: поля карточки перенесены внутрь строк, чтобы подсветка доходила до краёв */
+.rgp{padding-left:0;padding-right:0;transition:padding-bottom .3s cubic-bezier(.4,0,.2,1)}
+.rgp.open{padding-bottom:0}
+.rgp .cph{padding-left:22px;padding-right:22px}
+.rgp .cph::before{left:0;right:0;top:-8px;bottom:-8px;border-radius:var(--cr);pointer-events:auto;transition:opacity .25s ease,bottom .3s cubic-bezier(.4,0,.2,1),border-radius .3s ease}
+.rgp.open .cph::before{bottom:0;border-radius:var(--cr) var(--cr) 0 0}
+.rgp .cpi{padding-left:64px;padding-right:22px;border-top:0}
+.rgp .cpi::after{content:"";position:absolute;top:0;left:64px;right:22px;height:1px;background:var(--line)}
+.rgp .cpi::before{left:0;right:0;top:0;bottom:0;border-radius:0;pointer-events:auto}
+.rgp .cpi:last-child{padding-bottom:20px}
+.rgp .cpi:last-child::before{border-radius:0 0 var(--cr) var(--cr)}
