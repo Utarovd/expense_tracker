@@ -111,13 +111,15 @@ final class AppLock {
         showShield()
     }
 
-    /// Пункт управления, переключатель приложений: только закрыть содержимое.
+    /// Пункт управления, переключатель приложений: экран размывается (дизайн виден, данные нет).
+    /// Этот же размытый вид попадает в снимок для списка недавних приложений.
     func cover() {
         showShield()
     }
 
     func becameActive() {
         if locked {
+            // Face ID сразу, поверх размытого экрана; кнопка Unlock появляется, только если отменили или не узнало
             if autoPrompt && !authenticating {
                 autoPrompt = false
                 authenticate()
@@ -129,6 +131,7 @@ final class AppLock {
 
     private func authenticate() {
         authenticating = true
+        setButton(visible: false)
         let ctx = LAContext()
         ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Budget") { ok, _ in
             DispatchQueue.main.async {
@@ -136,6 +139,8 @@ final class AppLock {
                 if ok {
                     self.locked = false
                     self.hideShield()
+                } else {
+                    self.setButton(visible: true)
                 }
             }
         }
@@ -145,7 +150,17 @@ final class AppLock {
         if locked && !authenticating { authenticate() }
     }
 
-    // MARK: - Заставка
+    // MARK: - Заставка: размытый текущий экран, кнопка Unlock только при необходимости
+
+    private var buttonBox: UIView?
+
+    private func setButton(visible: Bool) {
+        guard let b = buttonBox else { return }
+        UIView.animate(withDuration: visible ? 0.25 : 0.12, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+            b.alpha = visible ? 1 : 0
+            b.transform = visible ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
+        }
+    }
 
     private func showShield() {
         guard let window = window else { return }
@@ -157,14 +172,28 @@ final class AppLock {
         }
         let s = UIView(frame: window.bounds)
         s.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        s.backgroundColor = Brand.background
+        s.backgroundColor = .clear
+
+        // два слоя размытия: раскладка и цвета видны, цифры и текст не читаются
+        for style in [UIBlurEffect.Style.systemMaterial, .systemThinMaterial] {
+            let blur = UIVisualEffectView(effect: UIBlurEffect(style: style))
+            blur.frame = s.bounds
+            blur.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            s.addSubview(blur)
+        }
+
+        let box = UIView()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.alpha = 0
+        box.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+        s.addSubview(box)
 
         let icon = UIImageView(image: UIImage(named: "LockIcon"))
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.layer.cornerRadius = 22
         icon.layer.cornerCurve = .continuous
         icon.clipsToBounds = true
-        s.addSubview(icon)
+        box.addSubview(icon)
 
         let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -177,20 +206,25 @@ final class AppLock {
         button.addTarget(self, action: #selector(unlockTapped), for: .touchUpInside)
         button.addTarget(self, action: #selector(pressDown(_:)), for: [.touchDown, .touchDragEnter])
         button.addTarget(self, action: #selector(pressUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
-        s.addSubview(button)
+        box.addSubview(button)
 
         NSLayoutConstraint.activate([
-            icon.centerXAnchor.constraint(equalTo: s.centerXAnchor),
-            icon.centerYAnchor.constraint(equalTo: s.centerYAnchor, constant: -40),
+            box.centerXAnchor.constraint(equalTo: s.centerXAnchor),
+            box.centerYAnchor.constraint(equalTo: s.centerYAnchor),
+            box.widthAnchor.constraint(equalTo: s.widthAnchor),
+            icon.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            icon.topAnchor.constraint(equalTo: box.topAnchor),
             icon.widthAnchor.constraint(equalToConstant: 96),
             icon.heightAnchor.constraint(equalToConstant: 96),
-            button.centerXAnchor.constraint(equalTo: s.centerXAnchor),
+            button.centerXAnchor.constraint(equalTo: box.centerXAnchor),
             button.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 32),
-            button.heightAnchor.constraint(equalToConstant: 48)
+            button.heightAnchor.constraint(equalToConstant: 48),
+            button.bottomAnchor.constraint(equalTo: box.bottomAnchor)
         ])
 
         window.addSubview(s)
         shield = s
+        buttonBox = box
     }
 
     private func hideShield() {
@@ -201,6 +235,7 @@ final class AppLock {
             if finished && self.shield === s && s.alpha == 0 {
                 s.removeFromSuperview()
                 self.shield = nil
+                self.buttonBox = nil
             }
         })
     }
