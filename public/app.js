@@ -364,7 +364,11 @@ function openSheet(html) {
   if (!ovEl) { lockScroll(); ovEl = document.createElement('div'); ovEl.className = 'ov'; ovEl.innerHTML = '<div class="sheet"></div>'; ovEl.addEventListener('mousedown', e => { if (e.target === ovEl) closeSheet(); }); document.body.appendChild(ovEl); requestAnimationFrame(() => requestAnimationFrame(() => ovEl && ovEl.classList.add('open'))); }
   ovEl.firstChild.innerHTML = '<i class="grab"></i><button type="button" class="shx" aria-label="Close" data-act="shclose">×</button>' + html;
 }
-function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; unlockScroll(); el.classList.remove('open'); setTimeout(() => el.remove(), 300); }
+// закрытие: шторка уезжает вниз до конца (по её собственной анимации, в т.ч. пружине после свайпа), и только потом окно убирается;
+// прокрутка страницы возвращается после этого — на экране ничего не мелькает
+function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; el.classList.remove('open'); el.style.pointerEvents = 'none';
+  const sh = el.firstChild; let done = false; const fin = () => { if (done) return; done = true; el.remove(); if (!ovEl) unlockScroll(); };
+  if (sh) sh.addEventListener('transitionend', (e) => { if (e.target === sh && e.propertyName === 'transform') fin(); }); setTimeout(fin, 700); }
 const sheetEl = () => ovEl && ovEl.firstChild;
 // подтверждение (как alert в iOS): Promise<boolean>
 function ask(title, msg, okLabel = 'Delete') {
@@ -1449,14 +1453,14 @@ document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target
       else { if (dy > 0 && dy >= Math.abs(dx) && e.cancelable) e.preventDefault(); return; } // вниз от верха: iOS не начинает свою прокрутку-резинку, шторка трогается ровно
     }
     const d = Math.max(0, t.clientY - st.y); st.dy = d; trackV(st, d); if (e.cancelable) e.preventDefault();
-    sh.style.transform = `translate3d(0,${d}px,0)`; ovEl.style.opacity = String(Math.max(0.2, 1 - d / 500));
+    sh.style.transform = `translate3d(0,${d}px,0)`; ovEl.style.setProperty('--dimt', '0s'); ovEl.style.setProperty('--dim', String(Math.max(0.2, 1 - d / 500))); // светлеет только фон, шторка остаётся непрозрачной
   }, { passive: false });
   const end = () => {
     if (!st) return; const s2 = st; st = null; { const s = sheetEl(); if (s && !s2.on) s.style.willChange = ''; } if (!s2.on || !ovEl) return;
     const sh = sheetEl(), ov = ovEl;
     // доводка пружиной со скоростью пальца: закрытие — вниз до конца, иначе мягко обратно
     if (s2.lt && performance.now() - s2.lt > 80) s2.v = 0; const H = sh.offsetHeight + 40; const close = flingDone(s2.dy, s2.v || 0, 110);
-    const cv = springCurve((close ? H : 0) - s2.dy, s2.v || 0); sh.style.transition = 'transform ' + cv; ov.style.opacity = '';
+    const cv = springCurve((close ? H : 0) - s2.dy, s2.v || 0); sh.style.transition = 'transform ' + cv; ov.style.setProperty('--dimt', '.3s'); ov.style.removeProperty('--dim');
     if (close) { sh.style.transform = `translate3d(0,${H}px,0)`; closeSheet(); }
     else { sh.style.transform = 'translate3d(0,0,0)'; setTimeout(() => { if (sheetEl() === sh) { sh.style.transition = ''; sh.style.transform = ''; sh.style.willChange = ''; } }, 320); }
   };

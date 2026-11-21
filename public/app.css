@@ -474,3 +474,7 @@ button.catf.none{color:var(--mut)}
 /* клавиатура открыта: фон шторки продолжается под плавающей панелью ✓ над клавиатурой (без просвета страницы) */
 .ov.kb::after{content:"";position:absolute;top:100%;left:0;right:0;margin:0 auto;max-width:560px;height:100vh;background:var(--card);pointer-events:none}
 .cpnt .cpb,.cpnt .cpbi,.cpnt .cpa{transition:none!important}
+/* затемнение фона — отдельный слой: при закрытии гаснет только фон, а шторка целиком плавно уезжает вниз (раньше вся шторка тускнела вместе с фоном и будто мигала) */
+.ov{background:none;opacity:1}
+.ov::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.4);opacity:0;transition:opacity var(--dimt,.28s) ease;pointer-events:none}
+.ov.open::before{opacity:var(--dim,1)}
