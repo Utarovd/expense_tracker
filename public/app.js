@@ -162,13 +162,13 @@ function openCatPicker(btn) {
     if (tg) { // раскрыть раздел (открытые остальные сворачиваются одновременно)
       const s = tg.parentNode, was = s.classList.contains('open');
       el.querySelectorAll('.cps.open').forEach(x => { if (x !== s) x.classList.remove('open'); });
-      s.classList.toggle('open', !was); haptic();
+      s.classList.toggle('open', !was); haptic('select');
       // раскрытый раздел у нижнего края: список плавно докручивается, чтобы подкатегории были видны
       if (!was) setTimeout(() => { const lb = list.getBoundingClientRect(), sb = s.getBoundingClientRect(); const over = sb.bottom - lb.bottom + 8; if (over > 0) list.scrollBy({ top: Math.min(over, sb.top - lb.top - 4), behavior: 'smooth' }); }, 310);
       return;
     }
     const r = e.target.closest('[data-cid]'); if (!r) { if (e.target === el) close(); return; }
-    F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic(); close();
+    F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic('select'); close();
   });
   // свайп вниз: шторка едет за пальцем, когда список вверху; отпускание — пружина со скоростью пальца
   let st = null;
@@ -316,7 +316,7 @@ function splitQuick(text) {
 function quickAdd(text) {
   const items = splitQuick(text).map(parseQuick); if (!items.length || items.some(q => !q)) return toast('Didn’t get that. Example: “lunch 58000, taxi 25k”');
   if (items.length === 1) return quickOne(items[0]);
-  const done = items.map(q => quickOne(q, true)).filter(Boolean); haptic();
+  const done = items.map(q => quickOne(q, true)).filter(Boolean); haptic('success');
   toast(`Added ${done.length}: ` + done.map(d => `${d.q.income ? '+' : '−'}${fmt(d.q.amount, d.acc.currency)}${d.q.note ? ' ' + d.q.note : ''}`).join(' · '));
 }
 function quickOne(q, quiet) {
@@ -329,7 +329,7 @@ function quickOne(q, quiet) {
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
   if (quiet) return { q, acc };
-  haptic(); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
+  haptic('success'); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
 }
 
 // ---------- UI-утилиты ----------
@@ -702,11 +702,11 @@ function openRule(i) {
 function saveRule() {
   const w = String(F.rw || '').trim().toLowerCase(); if (!w) return toast('Enter a word'); if (!F.rc) return toast('Pick a category');
   const r = rules(); if (F.ri === '') r.push({ w, c: F.rc }); else r[+F.ri] = { w, c: F.rc };
-  saveRules(r); closeSheet(); haptic(); render(true); toast('Saved · old transactions are not changed');
+  saveRules(r); closeSheet(); haptic('success'); render(true); toast('Saved · old transactions are not changed');
 }
 async function deleteRule() {
   if (!(await ask('Delete this rule?', '“' + F.rw + '” → ' + catLabel(F.rc)))) return;
-  const r = rules(); r.splice(+F.ri, 1); saveRules(r); closeSheet(); haptic(); render(true); toast('Deleted');
+  const r = rules(); r.splice(+F.ri, 1); saveRules(r); closeSheet(); haptic('warning'); render(true); toast('Deleted');
 }
 // перетаскивание за ручку ☰ (мышь и палец), соседи сдвигаются плавно
 let drag = null;
@@ -851,13 +851,13 @@ function saveTx() {
     put('transactions', tx);
     // новая заметка с выбранной категорией: предложить запомнить правило (один раз, тапом по подсказке)
     const w = tx.category_id && !F.autoCat ? ruleWord(tx.note) : '';
-    if (w && !ruleCat(tx.note) ) { closeSheet(); haptic(); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); haptic(); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
+    if (w && !ruleCat(tx.note) ) { closeSheet(); haptic('success'); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); haptic('success'); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
   }
-  closeSheet(); haptic(); toast('Saved');
+  closeSheet(); haptic('success'); toast('Saved');
 }
 function deleteTx() {
   if (F.type === 'transfer') (F.legs || []).forEach(l => del('transactions', l.id)); else del('transactions', F.id);
-  closeSheet(); haptic(); toast('Deleted');
+  closeSheet(); haptic('warning'); toast('Deleted');
 }
 function openAcc(id) {
   const a = id ? byId('accounts', id) : { type: 'card_uzs', currency: 'UZS', name: '', card_last4: '', opening_balance: 0, hidden: 0, exclude_from_total: 0 };
@@ -954,10 +954,10 @@ document.addEventListener('click', async (e) => {
     case 'space': S.space = id; S.balShown = null; persist(); render(); break;
     case 'mprev': S.month = shiftMonth(curMonth(), -(+id || 1)); render(); break;
     case 'mnext': S.month = shiftMonth(curMonth(), +id || 1); render(); break;
-    case 'per': S.per = id; haptic(); render(); break;
-    case 'trendm': S.month = id; S.per = '1M'; haptic(); render(); break;
-    case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic(); render(true); break; }
-    case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic(); render(); break;
+    case 'per': S.per = id; haptic('select'); render(); break;
+    case 'trendm': S.month = id; S.per = '1M'; haptic('select'); render(); break;
+    case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic('select'); render(true); break; }
+    case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic('select'); render(); break;
     case 'accf': S.accF = id; render(); break;
     case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/history'); break;
     case 'uncatf': S.uncat = !S.uncat; render(); break;
@@ -972,7 +972,7 @@ document.addEventListener('click', async (e) => {
     case 'accnew': openAcc(null); break;
     case 'fflag': F[id] = F[id] ? 0 : 1; a.classList.toggle('on'); break;
     case 'accsave': saveAcc(); break;
-    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic(); toast('Deleted'); } break;
+    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic('warning'); toast('Deleted'); } break;
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
     case 'ruleedit': openRule(id || ''); break;
@@ -987,8 +987,8 @@ document.addEventListener('click', async (e) => {
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
     case 'theme': tryLS(() => localStorage.setItem('theme', id)); smoothTheme(() => { applyTheme(); render(true); }); break;
-    case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic(); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
-    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic(); render(true); break;
+    case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic('select'); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
+    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic('select'); render(true); break;
     case 'pwsave': {
       const v = (i) => document.getElementById(i).value; const er = document.getElementById('pwerr'); er.textContent = '';
       if (v('pw1').length < 8) { er.textContent = 'New password must be at least 8 characters'; break; }
@@ -996,7 +996,7 @@ document.addEventListener('click', async (e) => {
       const r = await api('/api/password', { method: 'POST', body: JSON.stringify({ current: v('pw0'), next: v('pw1') }) }).catch(() => null);
       if (!r) { er.textContent = 'No connection to the server'; break; }
       if (!r.ok) { er.textContent = r.data.error === 'wrong_current' ? 'Current password is wrong' : 'Couldn’t change the password'; break; }
-      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic(); toast('Password changed'); break;
+      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic('success'); toast('Password changed'); break;
     }
     case 'syncnow': await sync(); toast('Done'); break;
     case 'copyhook': tryLS(() => navigator.clipboard.writeText(S.me.hook_url)); toast('Copied'); break;
