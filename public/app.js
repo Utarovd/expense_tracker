@@ -1075,7 +1075,10 @@ function saveBudget(cat, val) {
 function exportCsv() {
   const L = ['Date;Type;Account;Amount;Currency;Category;Note;Source'];
   rows('transactions').filter(t => t.space_id === S.space).sort((a, b) => a.occurred_at - b.occurred_at).forEach(t => L.push([dd(t.occurred_at) + ' ' + hm(t.occurred_at), t.type, (byId('accounts', t.account_id) || {}).name, t.amount / 100, t.currency, catPath(t.category_id), (t.note || t.merchant || '').replace(/;/g, ','), t.source].join(';')));
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\n')], { type: 'text/csv' })); a.download = 'budget.csv'; a.click();
+  const name = 'budget-' + new Date().toISOString().slice(0, 10) + '.csv', text = '﻿' + L.join('\n');
+  // в приложении ссылка-скачивание не работает: файл отдаётся через системное меню «Поделиться» (Сохранить в Файлы и т.д.)
+  if (NATIVE) { nat('shareFile', { name, text }).then(r => { if (r === null) toast('Export needs the new app version', null, 'err'); }); return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 function applyTheme() {
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto';

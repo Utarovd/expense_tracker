@@ -243,7 +243,8 @@ public class BudgetNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setWidget", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLock", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setLock", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "takeUrl", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "takeUrl", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise)
     ]
 
     private var pendingURL: String?
@@ -295,6 +296,27 @@ public class BudgetNativePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func getLock(_ call: CAPPluginCall) {
         call.resolve(["on": AppLock.enabled])
+    }
+
+    // экспорт файла (CSV): во встроенном браузере скачивание по ссылке не работает, поэтому файл
+    // пишется во временную папку и открывается системное меню «Поделиться» (Сохранить в Файлы, Telegram и т.д.)
+    @objc func shareFile(_ call: CAPPluginCall) {
+        guard let text = call.getString("text") else { return call.reject("text required") }
+        let raw = call.getString("name") ?? "export.txt"
+        let name = raw.replacingOccurrences(of: "/", with: "-")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do { try text.write(to: url, atomically: true, encoding: .utf8) } catch { return call.reject("write failed") }
+        DispatchQueue.main.async {
+            guard let vc = self.bridge?.viewController else { return call.reject("no view") }
+            let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            if let pop = av.popoverPresentationController {
+                pop.sourceView = vc.view
+                pop.sourceRect = CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.midY, width: 1, height: 1)
+                pop.permittedArrowDirections = []
+            }
+            av.completionWithItemsHandler = { _, done, _, _ in call.resolve(["done": done]) }
+            vc.present(av, animated: true)
+        }
     }
 
     @objc func setLock(_ call: CAPPluginCall) {
