@@ -470,3 +470,10 @@ button.catf.none{color:var(--mut)}
 @media (hover:none){.mnav button.tch,.chip:not(.on).tch,.icpick button:not(.on).tch img,.sheet .shx.tch{outline-color:var(--hovring)}}
 .mnav button:active,.chip:active,.icpick button:active img{transform:scale(.97)}
 .chip{outline-offset:-2px} /* кольцо внутри: ряд фильтров прокручивается и обрезал бы внешнее кольцо */
+/* Rules: разделы-аккордеоны */
+.rgp{margin-top:0;margin-bottom:10px;padding-top:8px;padding-bottom:8px}
+.rgp .cph{font-size:18px}
+.rgn{color:var(--mut);font-size:15px;font-weight:600;margin-right:2px}
+.rgp .cpi .grow{display:flex;flex-direction:column;gap:2px}
+.rgp .cpi{padding-left:46px}
+.rgp .cpi::before{left:36px}

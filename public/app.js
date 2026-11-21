@@ -375,7 +375,7 @@ function ask(title, msg, okLabel = 'Delete') {
 // ---------- роутинг ----------
 const MAIN = ['/', '/history', '/stats', '/profile'];
 let slideDir = '';
-const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rate': pgRate, '/profile/settings': pgSettings });
+const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rules': pgRules, '/profile/rate': pgRate, '/profile/settings': pgSettings });
 // порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
 // старые адреса (до 20.11: /more, /accounts …) ведут на новые /profile/… — закладки и PWA продолжают работать
 const OLDP = { '/transactions': '/history', '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings' };
@@ -667,7 +667,7 @@ function pgAccounts() {
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings, Telegram']];
+  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rules', 'tag', 'Rules'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings, Telegram']];
   return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
@@ -687,10 +687,22 @@ function pgBudget() {
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
   const hdl = `<span class="hdl" data-hdl aria-label="Drag to reorder">${svg('grip', 20)}</span>`;
-  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row rtop" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><button class="addsub" data-act="catnew" data-id="${r.id}">${svg('add', 18)}<span>Add subcategory</span></button></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>
-  <h2 style="margin:24px 0 8px">Rules</h2><div class="sub" style="margin-bottom:10px">A word in the note picks the category right away: “компы” → Gaming.</div>
-  <div class="card">${rules().length ? rules().map((r, i) => `<div class="row" data-act="ruleedit" data-id="${i}"><div class="grow"><b>${esc(r.w)}</b><span class="sub">${esc(catLabel(r.c))}</span></div><span class="sub">›</span></div>`).join('') : '<div class="sub">No rules yet</div>'}</div>
-  <button class="btn sec full" data-act="ruleedit" data-id="">+ Rule</button>`;
+  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row rtop" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><button class="addsub" data-act="catnew" data-id="${r.id}">${svg('add', 18)}<span>Add subcategory</span></button></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
+}
+// Правила на своей странице, сгруппированы по разделам: заголовок раздела раскрывает его правила (как в выборе категории)
+function pgRules() {
+  const all = rules().map((r, i) => ({ ...r, i })); const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id);
+  const order = (id) => { const c = byId('categories', id); return c ? c.sort : 999; };
+  const groups = roots.map(p => { const ids = new Set([p.id].concat(cats().filter(c => c.parent_id === p.id).map(c => c.id))); return { p, list: all.filter(r => ids.has(r.c)) }; }).filter(g => g.list.length);
+  const known = new Set(groups.flatMap(g => g.list.map(r => r.i))); const lost = all.filter(r => !known.has(r.i));
+  const chev = '<svg class="cpa" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  const sec = (key, ico, name, list, pid) => {
+    list.sort((a, b) => (a.c === pid ? -1 : order(a.c)) - (b.c === pid ? -1 : order(b.c)) || a.w.localeCompare(b.w));
+    return `<div class="card rgp cps${S.rOpen === key ? ' open' : ''}" data-id="${key}"><div class="cph" data-act="rtog" data-id="${key}">${ico}<span class="grow">${esc(name)}</span><span class="rgn">${list.length}</span>${chev}</div><div class="cpb"><div class="cpbi">${list.map(r => { const c = byId('categories', r.c); return `<div class="cpi" data-act="ruleedit" data-id="${r.i}"><span class="grow"><b>${esc(r.w)}</b><span class="sub">${c && c.parent_id ? esc(c.name) : c ? 'Whole category' : 'Category deleted'}</span></span><span class="sub">›</span></div>`; }).join('')}</div></div></div>`;
+  };
+  return `<div class="top"><h1>Rules</h1>${spaceSwitch()}</div><div class="sub" style="margin:-4px 0 14px">A word in the note picks the category right away: “компы” → Gaming.</div>
+  ${groups.map(g => sec(g.p.id, `<span class="ico sm">${rootIcon(g.p, 18)}</span>`, g.p.name, g.list, g.p.id)).join('')}${lost.length ? sec('_lost', `<span class="ico sm">${svg('tag', 18)}</span>`, 'No category', lost, '') : ''}
+  ${all.length ? '' : '<div class="card"><div class="sub">No rules yet</div></div>'}<button class="btn sec full" data-act="ruleedit" data-id="">+ Rule</button>`;
 }
 function openRule(i) {
   const r = i === '' ? { w: '', c: '' } : rules()[+i]; if (!r) return; F = { ri: i, rw: r.w, rc: r.c };
@@ -702,11 +714,11 @@ function openRule(i) {
 function saveRule() {
   const w = String(F.rw || '').trim().toLowerCase(); if (!w) return toast('Enter a word'); if (!F.rc) return toast('Pick a category');
   const r = rules(); if (F.ri === '') r.push({ w, c: F.rc }); else r[+F.ri] = { w, c: F.rc };
-  saveRules(r); closeSheet(); haptic(); render(true); toast('Saved · old transactions are not changed');
+  const nw = F.ri === ''; saveRules(r); const rc = byId('categories', F.rc); S.rOpen = rc ? (rc.parent_id || rc.id) : S.rOpen; closeSheet(); haptic(nw ? 'success' : 'light'); render(true); toast('Saved · old transactions are not changed');
 }
 async function deleteRule() {
   if (!(await ask('Delete this rule?', '“' + F.rw + '” → ' + catLabel(F.rc)))) return;
-  const r = rules(); r.splice(+F.ri, 1); saveRules(r); closeSheet(); haptic(); render(true); toast('Deleted');
+  const r = rules(); r.splice(+F.ri, 1); saveRules(r); closeSheet(); haptic('warning'); render(true); toast('Deleted');
 }
 // перетаскивание за ручку ☰ (мышь и палец), соседи сдвигаются плавно
 let drag = null;
@@ -881,15 +893,39 @@ function openCat(id, parent) {
   F = { cat: id, ...c };
   openSheet(`<h2>${id ? 'Category' : 'New category'}</h2><div class="lbl">Name</div><input class="f" data-f="name" value="${esc(c.name)}">
   ${c.parent_id ? '' : `<div class="lbl">Icon (emoji)</div><input class="f" data-f="icon" value="${esc(c.icon)}"><div class="lbl">Type</div><select class="f" data-f="kind" ${id ? 'disabled' : ''}><option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>Expense</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>Income</option></select>`}
-  <div style="display:flex;gap:8px;margin:6px 0 14px">${id ? '<button class="btn sec" data-act="catarch">Archive</button>' : ''}</div>
+  ${id ? '<div style="display:flex;gap:10px;margin:6px 0 14px"><button class="btn red" data-act="catdel">Delete</button><button class="btn sec" data-act="catarch">Archive</button></div>' : ''}
   <button class="btn full" data-act="catsave">Save</button>`);
 }
 function saveCat() {
   if (!F.name.trim()) return toast('Enter a name');
   const prev = F.cat ? byId('categories', F.cat) : null;
   const sibs = cats().filter(x => (x.parent_id || null) === (F.parent_id || null));
+  if (!prev) {
+    haptic('success');
+    const nm = F.name.trim(), kind = F.kind || 'expense', pid = F.parent_id || null;
+    const old = Object.values(S.db.categories).filter(c => c.deleted_at && c.space_id === S.space && c.name === nm && c.kind === kind && (c.parent_id || null) === pid).sort((a, b) => b.updated_at - a.updated_at)[0];
+    if (old) { const sibs = cats().filter(x => (x.parent_id || null) === pid); put('categories', { ...old, deleted_at: null, archived: 0, sort: sibs.length + 1, icon: pid ? '' : (F.icon || old.icon || '') }); closeSheet(); render(true); const n = rows('transactions').filter(t => t.category_id === old.id).length; return toast(n ? `Restored · ${n} old transaction${n > 1 ? 's' : ''} joined` : 'Saved'); }
+  }
   put('categories', { ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, parent_id: F.parent_id || null, name: F.name.trim(), kind: F.kind || 'expense', sort: prev ? prev.sort : sibs.length + 1, icon: F.icon || '', archived: prev ? prev.archived || 0 : 0 });
   closeSheet();
+}
+// Удаление категории (Doniyor 21.11): удаляется сразу, операции остаются в истории со своим названием.
+// Раздел удаляется вместе с подкатегориями; правила и лимиты на них тоже уходят.
+// Новая категория с ТОЧНО таким же названием (там же, того же типа) возвращает удалённую — старые операции снова с ней, как будто слиты.
+const catFamily = (id) => [id].concat(cats().filter(c => c.parent_id === id).map(c => c.id));
+async function deleteCat() {
+  const c = byId('categories', F.cat); if (!c) return; const fam = new Set(catFamily(c.id));
+  const n = rows('transactions').filter(t => fam.has(t.category_id)).length;
+  const subsN = fam.size - 1, what = c.parent_id ? 'subcategory' : 'category';
+  const msg = `“${c.name}”${subsN ? ` and its ${subsN} subcategor${subsN > 1 ? 'ies' : 'y'}` : ''} will be removed.` + (n ? ` ${n} transaction${n > 1 ? 's stay' : ' stays'} in History. Create a ${what} with exactly this name later and they join it again.` : '');
+  if (!(await ask(`Delete this ${what}?`, msg))) return;
+  dropCat(fam);
+}
+function dropCat(fam) {
+  fam.forEach(id => del('categories', id));
+  rows('budgets').filter(b => fam.has(b.category_id)).forEach(b => del('budgets', b.id));
+  const r = rules(), keep = r.filter(x => !fam.has(x.c)); if (keep.length !== r.length) saveRules(keep);
+  closeSheet(); haptic('warning'); render(true); toast('Deleted');
 }
 function moveCat(d) {
   const c = byId('categories', F.cat); const sibs = cats().filter(x => (x.parent_id || null) === (c.parent_id || null) && x.kind === c.kind);
@@ -980,7 +1016,9 @@ document.addEventListener('click', async (e) => {
     case 'rulesave': saveRule(); break;
     case 'ruledel': deleteRule(); break;
     case 'catsave': saveCat(); break;
-    case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); break;
+    case 'catdel': deleteCat(); break;
+    case 'rtog': { const s = a.closest('.rgp'), was = s.classList.contains('open'); document.querySelectorAll('.rgp.open').forEach(x => { if (x !== s) x.classList.remove('open'); }); s.classList.toggle('open', !was); S.rOpen = was ? '' : id; haptic(); break; }
+    case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); haptic('warning'); toast('Archived'); break;
     case 'catup': moveCat(-1); break;
     case 'catdown': moveCat(1); break;
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
