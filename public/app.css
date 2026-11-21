@@ -496,7 +496,9 @@ button.catf.none{color:rgba(20,22,28,.3)}:root[data-theme=dark] button.catf.none
 .toast .tic{flex:0 0 22px;width:22px;height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.22);color:inherit}
 .toast .ttx{min-width:0}.toast .tth{display:none}
 .toast[data-k=err]{background:linear-gradient(135deg,#ff6b6b,#d92d3a)}
-.toast[data-k=del]{background:linear-gradient(135deg,#a17bff,#6d28d9)}
+.toast[data-k=del]{background:linear-gradient(135deg,#ffae42,#e67e00)}
+/* Deleted (оранжевый, Doniyor 21.11): в светлой теме чёрный текст, в тёмной белый */
+:root:not([data-theme=dark]) .toast[data-k=del]{color:#16181d}:root:not([data-theme=dark]) .toast[data-k=del] .tic{background:rgba(0,0,0,.12)}
 .toast[data-k=info]{background:linear-gradient(135deg,#1f3b72,#0a1530);align-items:flex-start;padding:8px 10px;cursor:pointer}
 .toast[data-k=info] .tic{background:#f5c518;color:#0a1530}
 .toast[data-k=info] .tth{display:block;font-size:11px;line-height:14px;height:14px;font-weight:700;color:#f5c518;letter-spacing:.4px;text-transform:uppercase;margin:4px 0 2px}
