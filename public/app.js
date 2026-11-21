@@ -351,10 +351,19 @@ function haptic(style) {
     hapEl.click();
   } catch (e) { /* нет поддержки */ }
 }
-function toast(msg, onTap) {
-  let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
-  el.textContent = msg; el.onclick = onTap || null; el.style.pointerEvents = onTap ? 'auto' : 'none'; requestAnimationFrame(() => el.classList.add('on'));
-  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), onTap ? 5000 : 2600);
+// уведомление: карточка сверху под статус-баром, иконка по смыслу (успех / ошибка / инфо / «тапни»), въезжает сверху пружиной.
+// Длинный текст растягивает карточку вширь (до 16 px от краёв), а не в узкий высокий столбик. Ошибка — с вибрацией «ошибка».
+const TOAST_ERR = /^(Enter|Pick|Couldn|Didn|Error|Wrong|Failed|No )/i;
+const TOAST_IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', err: '<path d="M12 7v6"/><path d="M12 17h.01"/>', info: '<path d="M12 11v6"/><path d="M12 7h.01"/>', tap: '<path d="M9 6l6 6-6 6"/>' };
+function toast(msg, onTap, kind) {
+  let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.innerHTML = '<i class="tic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></svg></i><span class="ttx"></span>'; document.body.appendChild(el); }
+  const k = kind || (TOAST_ERR.test(msg) ? 'err' : /^Deleted|^Archived/.test(msg) ? 'info' : 'ok');
+  el.dataset.k = k; el.querySelector('svg').innerHTML = TOAST_IC[k] || TOAST_IC.ok; el.querySelector('.ttx').textContent = msg;
+  el.classList.toggle('act', !!onTap);
+  el.onclick = onTap ? () => { el.classList.remove('on'); onTap(); } : null; el.style.pointerEvents = onTap ? 'auto' : 'none';
+  if (k === 'err') haptic('error');
+  el.classList.remove('on'); void el.offsetWidth; requestAnimationFrame(() => el.classList.add('on'));
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), onTap ? 5000 : k === 'err' ? 3200 : 2600);
 }
 let ovEl = null;
 let lockY = null;
