@@ -1386,7 +1386,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   function cleanup() { if (!st) return; const c = cur(); if (c) { c.style.transition = ''; c.style.transform = ''; c.style.willChange = ''; } Object.values(pre.els).forEach(n => { n.style.visibility = 'hidden'; }); st = null; }
   document.addEventListener('touchstart', (e) => {
     if (pending) pending(); cleanup();
-    if (e.touches.length !== 1 || ovEl || !S.user || pgIdx(S.route) < 0 || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
+    if (e.touches.length !== 1 || ovEl || !S.user || pgIdx(S.route) < 0 || (window.visualViewport && visualViewport.scale > 1.01) || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
     prebuild(); const i = myI(); Object.entries(pre.els).forEach(([j, n]) => { mv(n, off(+j, i), ''); }); // соседние страницы стоят на местах, но остаются скрытыми до начала свайпа: iOS отменяет тап, если при касании на экране что-то появилось (холостое нажатие)
     const c = cur(); if (c) c.style.willChange = 'transform';
     const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
@@ -1679,3 +1679,6 @@ document.addEventListener('dragstart', (e) => { if (e.target.closest && e.target
   };
   document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
 })();
+
+// щипок не увеличивает страницу (Safari игнорирует user-scalable=no)
+['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));

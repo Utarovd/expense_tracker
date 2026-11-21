@@ -69,6 +69,11 @@ class MainViewController: CAPBridgeViewController {
         webView?.scrollView.bounces = true
         webView?.scrollView.alwaysBounceVertical = true
         webView?.scrollView.alwaysBounceHorizontal = false
+        // приложение не масштабируется: ни двойным тапом, ни щипком (Doniyor 21.11)
+        webView?.scrollView.minimumZoomScale = 1
+        webView?.scrollView.maximumZoomScale = 1
+        webView?.scrollView.bouncesZoom = false
+        webView?.scrollView.pinchGestureRecognizer?.isEnabled = false
         bridge?.registerPluginInstance(BudgetNativePlugin())
     }
 }
