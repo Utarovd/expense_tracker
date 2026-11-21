@@ -70,7 +70,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete ios-latest --yes --cleanup-tag || true
-          gh release create ios-latest Budget.ipa --title "Budget iOS (build ${{ github.run_number }})" \
+          sleep 5
+          # тег создаём явно на этом коммите: иначе GitHub иногда оставлял релиз без тега и ссылка давала 404
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "${GITHUB_SHA}:refs/tags/ios-latest"
+          gh release create ios-latest Budget.ipa --verify-tag --title "Budget iOS (build ${{ github.run_number }})" \
             --notes "Unsigned build for AltStore. Built $(TZ=Asia/Tashkent date '+%d.%m %H:%M') Tashkent." --latest=false
 
   # Проверка скриншотом: приложение в симуляторе iPhone запускается (экран входа).
