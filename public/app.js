@@ -1386,14 +1386,14 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   document.addEventListener('touchstart', (e) => {
     if (pending) pending(); cleanup();
     if (e.touches.length !== 1 || ovEl || !S.user || pgIdx(S.route) < 0 || e.target.closest('input,select,textarea,.chips,.ov,[data-hdl],.nav')) return;
-    prebuild(); const i = myI(); Object.entries(pre.els).forEach(([j, n]) => { mv(n, off(+j, i), ''); n.style.visibility = ''; });
+    prebuild(); const i = myI(); Object.entries(pre.els).forEach(([j, n]) => { mv(n, off(+j, i), ''); }); // соседние страницы стоят на местах, но остаются скрытыми до начала свайпа: iOS отменяет тап, если при касании на экране что-то появилось (холостое нажатие)
     const c = cur(); if (c) c.style.willChange = 'transform';
     const t = e.touches[0]; st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, dx: 0, j: -1, nb: null };
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
     if (!st) return; const t = e.touches[0]; const dx = t.clientX - st.x0, dy = t.clientY - st.y0;
     if (st.lock === null) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; if (st.lock === 'y') { cleanup(); return; }
-      st.x0 = t.clientX - Math.sign(dx) * 0.01; st.tb = {}; } // страница трогается с места без скачка на «мёртвую зону» 8 px
+      st.x0 = t.clientX - Math.sign(dx) * 0.01; st.tb = {}; Object.values(pre.els).forEach(n => { n.style.visibility = ''; }); } // страница трогается с места без скачка на «мёртвую зону» 8 px
     e.preventDefault(); return moveX(t);
   }, { passive: false });
   function moveX(t) { const dx = t.clientX - st.x0;
