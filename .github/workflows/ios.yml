@@ -36,6 +36,8 @@ jobs:
           xcodebuild -version
           xcodebuild -version | head -1 | awk '{ split($2, v, "."); if (v[1] < 26) { print "Xcode 26+ required"; exit 1 } }'
       - run: npm ci
+      - name: OTA manifest of the bundled web version
+        run: node ../scripts/ota-manifest.js
       - run: npx cap sync ios
       - name: Build (unsigned; AltStore signs it with your Apple ID)
         run: |
@@ -89,7 +91,7 @@ jobs:
       - run: |
           X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
           sudo xcode-select -s "$X"
-      - run: npm ci && npx cap sync ios
+      - run: npm ci && node ../scripts/ota-manifest.js && npx cap sync ios
       - name: Build for simulator
         run: |
           set -o pipefail

@@ -2,6 +2,8 @@ import UIKit
 import Capacitor
 import LocalAuthentication
 import WidgetKit
+import CryptoKit
+import CoreImage
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -20,6 +22,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         AppLock.shared.becameActive()
+        OTA.applyIfReady((scene as? UIWindowScene)?.windows.first?.rootViewController as? CAPBridgeViewController)
+        OTA.check()
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
@@ -27,6 +31,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
+        OTA.backgroundAt = Date()
         AppLock.shared.lock()
     }
 
@@ -60,6 +65,13 @@ enum Brand {
 }
 
 class MainViewController: CAPBridgeViewController {
+    // веб-часть: скачанная обновлённая версия (OTA), если она есть и рабочая, иначе встроенная
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let desc = super.instanceDescriptor()
+        if let u = OTA.launchLocation() { desc.appLocation = u }
+        return desc
+    }
+
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         webView?.isOpaque = false
@@ -170,6 +182,8 @@ final class AppLock {
     private func showShield() {
         guard let window = window else { return }
         if let s = shield {
+            // заставка ещё гасла после разблокировки: обновить размытый снимок (экран мог измениться)
+            if s.alpha < 1, let iv = s.subviews.first(where: { $0 is UIImageView }) as? UIImageView { iv.image = AppLock.blurredSnapshot(of: window) }
             s.layer.removeAllAnimations()
             s.alpha = 1
             window.bringSubviewToFront(s)
@@ -179,13 +193,14 @@ final class AppLock {
         s.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         s.backgroundColor = .clear
 
-        // два слоя размытия: раскладка и цвета видны, цифры и текст не читаются
-        for style in [UIBlurEffect.Style.systemMaterial, .systemThinMaterial] {
-            let blur = UIVisualEffectView(effect: UIBlurEffect(style: style))
-            blur.frame = s.bounds
-            blur.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            s.addSubview(blur)
-        }
+        // снимок текущего экрана, размытый по Гауссу: дизайн и цвета видны, цифры и текст не читаются.
+        // (системное размытие UIVisualEffectView в списке недавних приложений превращалось в серый экран)
+        s.backgroundColor = Brand.background
+        let img = UIImageView(frame: s.bounds)
+        img.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        img.contentMode = .scaleAspectFill
+        img.image = AppLock.blurredSnapshot(of: window)
+        s.addSubview(img)
 
         let box = UIView()
         box.translatesAutoresizingMaskIntoConstraints = false
@@ -230,6 +245,26 @@ final class AppLock {
         window.addSubview(s)
         shield = s
         buttonBox = box
+    }
+
+    private static let ciContext = CIContext(options: nil)
+
+    /// Снимок окна в 1/4 размера и сильное размытие: быстро и надёжно попадает в снимок переключателя приложений.
+    static func blurredSnapshot(of window: UIWindow) -> UIImage? {
+        guard let root = window.rootViewController?.view, root.bounds.width > 0 else { return nil }
+        let scale: CGFloat = 0.25
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = scale
+        let shot = UIGraphicsImageRenderer(bounds: root.bounds, format: fmt).image { _ in
+            root.drawHierarchy(in: root.bounds, afterScreenUpdates: false)
+        }
+        guard let cg = shot.cgImage else { return nil }
+        let input = CIImage(cgImage: cg)
+        let extent = input.extent
+        // радиус ~6 px на снимке 1/4 = ~24 pt на экране: крупные блоки и цвета видны, текст нет
+        guard let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputImageKey: input.clampedToExtent(), kCIInputRadiusKey: 6.0])?.outputImage?.cropped(to: extent),
+              let out = ciContext.createCGImage(blur, from: extent) else { return nil }
+        return UIImage(cgImage: out, scale: shot.scale, orientation: .up)
     }
 
     private func hideShield() {
@@ -288,7 +323,8 @@ public class BudgetNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getLock", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setLock", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takeUrl", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "otaOk", returnType: CAPPluginReturnPromise)
     ]
 
     private var pendingURL: String?
@@ -363,8 +399,171 @@ public class BudgetNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Веб-часть загрузилась: текущая версия рабочая. Отвечает, какая версия открыта.
+    @objc func otaOk(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            OTA.confirm()
+            call.resolve(["v": OTA.current ?? (OTA.version(at: OTA.bundled) ?? "bundled")])
+        }
+    }
+
     @objc func setLock(_ call: CAPPluginCall) {
         AppLock.enabled = call.getBool("on") ?? true
         call.resolve(["on": AppLock.enabled])
+    }
+}
+
+
+// MARK: - Обновление веб-части без переустановки (OTA)
+// Только HTML/JS/CSS/картинки из public/ (по правилам Apple можно; новые нативные возможности так не приходят).
+// Сервер отдаёт /ota.json: {"v": версия, "files": {путь: sha256}}. Приложение скачивает новую версию в фоне
+// в Library/ota/<v>, проверяет каждый файл по sha256 и включает её при следующем запуске
+// (или при возврате, если приложение было в фоне 10+ минут). Если новая версия не дошла до рабочего
+// состояния (веб-часть не сообщила otaOk), при следующем запуске открывается прошлая рабочая или встроенная.
+
+
+
+enum OTA {
+    static let server = URL(string: "https://budget.in-manager.uz")!
+    static let fallback = URL(string: "https://expense-tracker.in-manager.workers.dev")!
+    static let d = UserDefaults.standard
+    static var root: URL {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0].appendingPathComponent("ota", isDirectory: true)
+    }
+    static var bundled: URL? { Bundle.main.url(forResource: "public", withExtension: nil) }
+    static private(set) var current: String? = nil   // версия OTA, которая сейчас открыта (nil = встроенная)
+    static var busy = false
+    static var backgroundAt: Date?
+
+    static func version(at dir: URL?) -> String? {
+        guard let dir = dir, let data = try? Data(contentsOf: dir.appendingPathComponent("ota.json")),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return j["v"] as? String
+    }
+    static func files(at dir: URL?) -> [String: String] {
+        guard let dir = dir, let data = try? Data(contentsOf: dir.appendingPathComponent("ota.json")),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return (j["files"] as? [String: String]) ?? [:]
+    }
+    static var bad: [String] { d.stringArray(forKey: "otaBad") ?? [] }
+    static func markBad(_ v: String) { d.set(Array((bad + [v]).suffix(20)), forKey: "otaBad") }
+    static func dir(_ v: String) -> URL { root.appendingPathComponent(v, isDirectory: true) }
+    static func usable(_ v: String?) -> Bool {
+        guard let v = v, !bad.contains(v) else { return false }
+        return FileManager.default.fileExists(atPath: dir(v).appendingPathComponent("index.html").path)
+    }
+
+    /// Какую папку открыть при запуске. nil = встроенная в приложение.
+    static func launchLocation() -> URL? {
+        // новая установка из Mac со своей встроенной версией: прошлые OTA-версии больше не нужны
+        let bv = version(at: bundled) ?? "none"
+        let binKey = bv + "|" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
+        if d.string(forKey: "otaBinary") != binKey {
+            d.set(binKey, forKey: "otaBinary")
+            for k in ["otaGood", "otaReady", "otaTrying", "otaBad"] { d.removeObject(forKey: k) }
+            try? FileManager.default.removeItem(at: root)
+            return nil
+        }
+        // прошлый запуск новой версии не подтвердился (веб-часть не загрузилась) — эта версия плохая
+        if let t = d.string(forKey: "otaTrying") {
+            d.removeObject(forKey: "otaTrying")
+            markBad(t)
+            if d.string(forKey: "otaReady") == t { d.removeObject(forKey: "otaReady") }
+            if d.string(forKey: "otaGood") == t { d.removeObject(forKey: "otaGood") }
+        }
+        if let r = d.string(forKey: "otaReady"), usable(r) { return start(r) }
+        if let g = d.string(forKey: "otaGood"), usable(g) { current = g; return dir(g) }
+        return nil
+    }
+    private static func start(_ v: String) -> URL {
+        d.set(v, forKey: "otaTrying"); current = v; return dir(v)
+    }
+
+    /// Веб-часть загрузилась и работает: эта версия становится рабочей.
+    static func confirm() {
+        guard let v = current else { return }
+        d.removeObject(forKey: "otaTrying")
+        d.set(v, forKey: "otaGood")
+        if d.string(forKey: "otaReady") == v { d.removeObject(forKey: "otaReady") }
+        cleanup()
+    }
+    private static func cleanup() {
+        let keep = Set([d.string(forKey: "otaGood"), d.string(forKey: "otaReady"), current].compactMap { $0 })
+        let items = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        for n in items where !keep.contains(n) { try? FileManager.default.removeItem(at: root.appendingPathComponent(n)) }
+    }
+
+    /// Возврат из фона: если готова новая версия и приложение долго было в фоне — включить её сразу.
+    static func applyIfReady(_ vc: CAPBridgeViewController?) {
+        defer { backgroundAt = nil }
+        guard let since = backgroundAt, Date().timeIntervalSince(since) >= 600,
+              let r = d.string(forKey: "otaReady"), r != current, usable(r), let vc = vc else { return }
+        let u = start(r)
+        vc.setServerBasePath(path: u.path)
+        vc.webView?.reload()
+    }
+
+    /// Проверить сервер и скачать новую версию в фоне.
+    static func check() {
+        guard !busy else { return }
+        busy = true
+        Task.detached(priority: .utility) {
+            defer { OTA.busy = false }
+            for base in [OTA.server, OTA.fallback] {
+                if await OTA.fetch(base) { return }
+            }
+        }
+    }
+
+    private static func get(_ url: URL) async -> Data? {
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        guard let r = try? await URLSession.shared.data(for: req),
+              (r.1 as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return r.0
+    }
+    private static func sha(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// true = сервер ответил (обновление скачано или не нужно), false = сервер недоступен.
+    static func fetch(_ base: URL) async -> Bool {
+        let stamp = String(Int(Date().timeIntervalSince1970))
+        guard let mdata = await get(URL(string: base.absoluteString + "/ota.json?t=" + stamp)!),
+              let j = try? JSONSerialization.jsonObject(with: mdata) as? [String: Any],
+              let v = j["v"] as? String, let want = j["files"] as? [String: String], !want.isEmpty,
+              v.range(of: "^[a-f0-9]{8,64}$", options: .regularExpression) != nil else { return false }
+        let have = current ?? version(at: bundled)
+        if v == have || v == d.string(forKey: "otaReady") || bad.contains(v) { return true }
+
+        let fm = FileManager.default
+        let tmp = root.appendingPathComponent("tmp-" + v, isDirectory: true)
+        try? fm.removeItem(at: tmp)
+        guard (try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)) != nil else { return true }
+        // файлы, которые не изменились, берём из открытой сейчас версии (меньше трафика)
+        let srcDir = current.map { dir($0) } ?? bundled
+        let srcFiles = files(at: srcDir)
+        for (path, hash) in want {
+            guard !path.contains(".."), !path.hasPrefix("/") else { try? fm.removeItem(at: tmp); return true }
+            let dst = tmp.appendingPathComponent(path)
+            try? fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var data: Data? = nil
+            if srcFiles[path] == hash, let s = srcDir, let local = try? Data(contentsOf: s.appendingPathComponent(path)), sha(local) == hash {
+                data = local
+            } else {
+                let enc = path.split(separator: "/").map { String($0).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String($0) }.joined(separator: "/")
+                data = await get(URL(string: base.absoluteString + "/" + enc + "?v=" + v)!)
+            }
+            // любой файл не скачался или не совпал по sha256 — версия не включается
+            guard let ok = data, sha(ok) == hash, (try? ok.write(to: dst)) != nil else {
+                try? fm.removeItem(at: tmp); return true
+            }
+        }
+        guard (try? mdata.write(to: tmp.appendingPathComponent("ota.json"))) != nil else { try? fm.removeItem(at: tmp); return true }
+        let final = dir(v)
+        try? fm.removeItem(at: final)
+        guard (try? fm.moveItem(at: tmp, to: final)) != nil else { try? fm.removeItem(at: tmp); return true }
+        d.set(v, forKey: "otaReady")
+        return true
     }
 }

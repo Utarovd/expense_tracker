@@ -1328,7 +1328,8 @@ async function boot(fresh) {
     if (st && st.user) { Object.assign(S, { db: { ...S.db, ...st.db }, queue: { ...S.queue, ...st.queue }, cursor: st.cursor || 0, user: st.user, space: st.space, rates: st.rates, me: st.me }); TABLES.forEach(t => { S.db[t] = S.db[t] || {}; S.queue[t] = S.queue[t] || {}; }); }
     S.route = curPath();
   }
-  ensureSpace(); render(); if (NATIVE) { setTimeout(takeNativeUrl, 400); nat('getLock').then(r => { if (r) S.lockOn = r.on; }); }
+  // otaOk: версия веб-части загрузилась и работает (иначе приложение откатится на прошлую)
+  ensureSpace(); render(); if (NATIVE) { nat('otaOk'); setTimeout(takeNativeUrl, 400); nat('getLock').then(r => { if (r) S.lockOn = r.on; }); }
   if (navigator.onLine) {
     try {
       const [me, rate] = await Promise.all([api('/api/me', {}, 10000), api('/api/rate', {}, 15000).catch(() => null)]);

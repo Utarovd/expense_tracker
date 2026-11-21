@@ -2,3 +2,4 @@ node_modules
 .wrangler
 .dev.vars
 *.local
+public/ota.json
