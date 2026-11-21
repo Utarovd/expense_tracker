@@ -763,18 +763,17 @@ async function deleteRule() {
   if (!(await ask('Delete this rule?', '“' + F.rw + '” → ' + catLabel(F.rc)))) return;
   const r = rules(); r.splice(+F.ri, 1); saveRules(r); closeSheet(); haptic('warning'); render(true); toast('Deleted');
 }
-// перетаскивание за ручку ☰ (мышь и палец), соседи сдвигаются плавно
-let drag = null;
-document.addEventListener('pointerdown', (e) => {
-  const h = e.target.closest('[data-hdl]'); if (!h) return;
-  e.preventDefault(); e.stopPropagation();
-  const el = h.closest('.dr'); const box = el.parentElement;
-  drag = { el, box, y0: e.clientY, top0: el.offsetTop, moved: false };
-  el.classList.add('dragging'); try { h.setPointerCapture(e.pointerId); } catch (x) { /* */ }
-}, true);
-document.addEventListener('pointermove', (e) => {
-  if (!drag) return; e.preventDefault();
-  const { el, box } = drag; const vis = drag.top0 + (e.clientY - drag.y0); drag.moved = true;
+// перетаскивание за ручку ☰, соседи сдвигаются плавно.
+// Мышь: сразу. Палец: удержание 1 с (Doniyor 21.11) → строка приподнимается + вибрация, только потом двигается; обычный свайп просто листает.
+let drag = null, hold = null;
+const HOLD_MS = 1000;
+function startDrag(h, y) {
+  const el = h.closest('.dr'); if (!el) return; const box = el.parentElement;
+  drag = { el, box, y0: y, top0: el.offsetTop, moved: false };
+  el.classList.add('dragging'); el.style.transition = 'transform .18s cubic-bezier(.2,.8,.2,1)'; el.style.transform = 'scale(1.03)';
+}
+function moveDrag(y) {
+  const { el, box } = drag; const vis = drag.top0 + (y - drag.y0); drag.moved = true;
   const center = vis + el.offsetHeight / 2;
   const sibs = [...box.children].filter(x => x.classList.contains('dr') && x !== el);
   for (const sb of sibs) {
@@ -783,11 +782,31 @@ document.addEventListener('pointermove', (e) => {
       const before = sibs.map(x => [x, x.offsetTop]);
       if (after) box.insertBefore(el, sb.nextSibling); else box.insertBefore(el, sb);
       before.forEach(([x, t]) => { const d = t - x.offsetTop; if (d) { x.style.transition = 'none'; x.style.transform = `translateY(${d}px)`; requestAnimationFrame(() => { x.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)'; x.style.transform = ''; }); } });
-      break;
+      haptic('select'); break;
     }
   }
-  el.style.transform = `translateY(${vis - el.offsetTop}px)`;
+  el.style.transition = 'none'; el.style.transform = `translateY(${vis - el.offsetTop}px) scale(1.03)`;
+}
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'touch') return; const h = e.target.closest('[data-hdl]'); if (!h) return;
+  e.preventDefault(); e.stopPropagation(); startDrag(h, e.clientY); try { h.setPointerCapture(e.pointerId); } catch (x) { /* */ }
+}, true);
+document.addEventListener('pointermove', (e) => { if (!drag || e.pointerType === 'touch') return; e.preventDefault(); moveDrag(e.clientY); }, { passive: false });
+document.addEventListener('pointerup', (e) => { if (e.pointerType !== 'touch') endDrag(); }); document.addEventListener('pointercancel', (e) => { if (e.pointerType !== 'touch') endDrag(); });
+// палец
+const holdOff = () => { if (hold) { clearTimeout(hold.t); hold.h.classList.remove('hold'); hold = null; } };
+document.addEventListener('touchstart', (e) => {
+  const h = e.target.closest('[data-hdl]'); if (!h || e.touches.length !== 1 || drag) return; holdOff();
+  const t = e.touches[0]; h.classList.add('hold');
+  hold = { h, x: t.clientX, y: t.clientY, t: setTimeout(() => { const hh = hold; hold = null; hh.h.classList.remove('hold'); startDrag(hh.h, hh.y); haptic('medium'); }, HOLD_MS) };
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  const t = e.touches[0];
+  if (hold && t && Math.hypot(t.clientX - hold.x, t.clientY - hold.y) > 8) holdOff(); // палец поехал раньше срока — это прокрутка
+  if (drag && t) { e.preventDefault(); moveDrag(t.clientY); }
 }, { passive: false });
+const touchEnd = () => { holdOff(); if (drag) endDrag(); };
+document.addEventListener('touchend', touchEnd); document.addEventListener('touchcancel', touchEnd);
 function endDrag() {
   if (!drag) return; const { el, box, moved } = drag; drag = null;
   el.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)'; el.style.transform = ''; el.classList.remove('dragging');
@@ -795,9 +814,8 @@ function endDrag() {
   if (!moved) return;
   const ids = [...box.children].filter(x => x.classList.contains('dr')).map(x => x.dataset.id);
   const tb = box.dataset.table || 'categories';
-  setTimeout(() => { ids.forEach((id, k) => { const c = byId(tb, id); if (c && c.sort !== k) put(tb, { ...c, sort: k }); }); haptic(); }, 220);
+  setTimeout(() => { ids.forEach((id, k) => { const c = byId(tb, id); if (c && c.sort !== k) put(tb, { ...c, sort: k }); }); haptic('light'); }, 220);
 }
-document.addEventListener('pointerup', endDrag); document.addEventListener('pointercancel', endDrag);
 function pgRate() {
   const mode = setting('rate_mode', 'auto'), kind = setting('rate_kind', 'buy'); const r = S.rates || {};
   return `<div class="top"><h1>USD rate</h1></div><div class="card">
