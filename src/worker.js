@@ -786,7 +786,9 @@ async function webhook(req, env) {
     const amtStr = String(obj.amount);
     let n = parseNum(amtStr); if (!(n > 0)) { res = { text: '' }; }
     else {
-      const ct = amtStr + ' ' + (obj.currency || ''); const cur = /\$|usd/i.test(ct) ? 'USD' : /uzs|sum|сум|so'm|soum/i.test(ct) ? 'UZS' : null;
+      // валюта: Wallet показывает «so‘m 3 900,00» (апостроф бывает ‘ ’ ʻ ʼ `), «$2.81», «US$», «UZS»; без значка суммы от 1 000 считаем сомами
+      const ct = (amtStr + ' ' + (obj.currency || '')).replace(/[\u2018\u2019\u02bb\u02bc\u02b9`´]/g, "'");
+      const cur = /\$|usd|dollar|доллар/i.test(ct) ? 'USD' : /uzs|so'?m\b|som\b|soum|sum\b|сум|сўм/i.test(ct) ? 'UZS' : (n >= 1000 ? 'UZS' : null);
       res = await ingest(env, { src: 'wallet', type: /refund|return|возврат/i.test(String(obj.type || '')) ? 'income' : 'expense', merchant: String(obj.merchant || obj.name || '').trim(), ts: now(), amount: toMinor(n), currency: cur, card: String(obj.card || ''), last4: undefined });
     }
   } else if (sms) {

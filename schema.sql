@@ -75,3 +75,20 @@ INSERT OR IGNORE INTO transactions(id,space_id,type,account_id,amount,currency,f
     '', 'IP OOO ANGLESEY FOOD', CAST(strftime('%s','2026-11-20 15:43:00') AS INTEGER)*1000, NULL, 'app', 'receipt:visa:2011262043:281', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
   FROM accounts a JOIN spaces s ON s.id=a.space_id WHERE a.type='card_visa' AND a.deleted_at IS NULL AND s.kind='personal' LIMIT 1;
 INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
+
+-- Humo *7052, 21.11: две СМС от 13131 не дошли до сервера (14:32 popolnenie 1 000 000 IYM UZCARD2HUMO BEZ, 14:35 oplata 20 000 CHP XASAN XUSAN SAVD): добавлены вручную
+INSERT OR IGNORE INTO transactions(id,user_id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-humo-a', (SELECT v FROM meta WHERE k='owner_uid'), a.space_id, 'income', a.id, 100000000, 'UZS', 1, 100000000, NULL, '', 'IYM UZCARD2HUMO BEZ', CAST(strftime('%s','2026-11-21 09:32:00') AS INTEGER)*1000, NULL, 'sms', 'sms:7052:2611211432:1000000.00:1000025.85', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.card_last4='7052' AND a.deleted_at IS NULL AND a.user_id=(SELECT v FROM meta WHERE k='owner_uid') LIMIT 1;
+INSERT OR IGNORE INTO transactions(id,user_id,space_id,type,account_id,amount,currency,fx_rate,amount_base,category_id,note,merchant,occurred_at,transfer_group_id,source,external_id,updated_at,deleted_at,synced_at)
+  SELECT 'tx-humo-b', (SELECT v FROM meta WHERE k='owner_uid'), a.space_id, 'expense', a.id, 2000000, 'UZS', 1, 2000000, NULL, '', 'CHP XASAN XUSAN SAVD', CAST(strftime('%s','2026-11-21 09:35:00') AS INTEGER)*1000, NULL, 'sms', 'sms:7052:2611211435:20000.00:980025.85', CAST(strftime('%s','now') AS INTEGER)*1000, NULL, CAST(strftime('%s','now') AS INTEGER)*1000
+  FROM accounts a WHERE a.card_last4='7052' AND a.deleted_at IS NULL AND a.user_id=(SELECT v FROM meta WHERE k='owner_uid') LIMIT 1;
+-- если списание 1 000 000 на другой своей карте уже записано как расход, склеиваем в один перевод
+UPDATE transactions SET type='transfer', amount=-100000000, amount_base=-100000000, category_id=NULL, transfer_group_id='tg-humo-1', note='Between own cards', updated_at=CAST(strftime('%s','now') AS INTEGER)*1000, synced_at=CAST(strftime('%s','now') AS INTEGER)*1000
+  WHERE EXISTS (SELECT 1 FROM transactions WHERE id='tx-humo-a' AND type='income') AND id=(SELECT t.id FROM transactions t JOIN accounts a ON a.id=t.account_id WHERE t.user_id=(SELECT v FROM meta WHERE k='owner_uid') AND t.type='expense' AND t.amount=100000000 AND t.deleted_at IS NULL AND a.card_last4<>'7052' AND a.card_last4<>'' AND t.occurred_at BETWEEN CAST(strftime('%s','2026-11-21 09:20:00') AS INTEGER)*1000 AND CAST(strftime('%s','2026-11-21 09:45:00') AS INTEGER)*1000 ORDER BY t.occurred_at LIMIT 1);
+UPDATE transactions SET type='transfer', transfer_group_id='tg-humo-1', note='Between own cards', updated_at=CAST(strftime('%s','now') AS INTEGER)*1000, synced_at=CAST(strftime('%s','now') AS INTEGER)*1000 WHERE id='tx-humo-a' AND type='income' AND EXISTS (SELECT 1 FROM transactions WHERE transfer_group_id='tg-humo-1' AND id<>'tx-humo-a');
+INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
+
+-- Visa Wallet 21.11 14:17: «so‘m 3 900,00» записалась как 3 900 USD; исправляем: 3 900 UZS в USD по сохранённому курсу
+UPDATE transactions SET amount=CAST(ROUND(390000.0/fx_rate) AS INTEGER), amount_base=390000, updated_at=CAST(strftime('%s','now') AS INTEGER)*1000, synced_at=CAST(strftime('%s','now') AS INTEGER)*1000 WHERE source='wallet' AND currency='USD' AND amount=390000 AND fx_rate>1000 AND merchant LIKE '%Anglesey%' AND occurred_at BETWEEN CAST(strftime('%s','2026-11-21 08:30:00') AS INTEGER)*1000 AND CAST(strftime('%s','2026-11-21 11:00:00') AS INTEGER)*1000;
+INSERT OR REPLACE INTO meta(k,v) VALUES('stamp', CAST(strftime('%s','now') AS INTEGER)*1000);
