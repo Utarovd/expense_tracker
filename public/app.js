@@ -736,6 +736,45 @@ function trendChart(m, disp, rate, T = 'expense') {
   const inc = T === 'income';
   return `<div class="card"><div class="lbl">${inc ? 'Income' : 'Expenses'} · last 6 months</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%"><defs><linearGradient id="gexp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${inc ? '#34d399' : '#ff6b6b'}"/><stop offset="1" stop-color="${inc ? '#05875f' : '#c81e3a'}"/></linearGradient></defs>${bars}</svg><div class="tleg">Average ${shortAmt(avg, disp, rate)} / month · tap a month to open it</div></div>`;
 }
+// «By day»: столбцы по дням месяца с осями, легендой, средней линией; нажатие на день показывает сумму
+function niceStep(v) { const p = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1e-9)))); return [1, 2, 2.5, 5, 10].map(k => k * p).find(k => k >= v); }
+function byDayChart(m, disp, rate, T) {
+  const [a, b] = monthRange(m); const nd = Math.round((b - a) / 864e5); const days = Array(nd).fill(0), cnt = Array(nd).fill(0);
+  rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === T && t.occurred_at >= a && t.occurred_at < b) { const d = Math.floor((t.occurred_at - a) / 864e5); days[d] += t.amount_base; cnt[d]++; } });
+  const today = Math.floor((now() - a) / 864e5); const passed = Math.max(0, Math.min(nd, today + 1));
+  const dv = (v) => disp === 'USD' ? v / 100 / rate : v / 100; // в единицах показа
+  const step = niceStep(Math.max(...days.map(dv), 1) / 4); const mx = step * 4;
+  const L = 30, W = 300, H = 120, top = 8, VH = H + top + 18; const bw = (W - L) / nd;
+  const y = (v) => top + H - Math.min(1, dv(v) / mx) * H; const tot = days.reduce((x, v) => x + v, 0); const avg = passed ? tot / passed : 0;
+  const toMinor = (u) => disp === 'USD' ? u * rate * 100 : u * 100;
+  let g = ''; for (let k = 0; k <= 4; k++) { const yy = top + H - k / 4 * H; g += `<line class="gl" x1="${L}" x2="${W}" y1="${yy}" y2="${yy}"/><text x="${L - 4}" y="${yy + 3}" text-anchor="end">${k ? shortAmt(toMinor(step * k), disp, rate) : '0'}</text>`; }
+  const dow = (d) => new Date(a + d * 864e5 + TZ).getUTCDay();
+  const sel = S.bdSel && S.bdSel.m === m && S.bdSel.T === T ? S.bdSel.d : -1;
+  const bars = days.map((v, d) => { const we = dow(d) === 0 || dow(d) === 6; const h = v ? Math.max(1.5, top + H - y(v)) : 0;
+    return `<rect class="br${we ? ' we' : ''}${sel >= 0 ? (d === sel ? ' sel' : ' dim') : ''}" data-i="${d}" x="${(L + d * bw + 1).toFixed(2)}" y="${(top + H - h).toFixed(2)}" width="${(bw - 2).toFixed(2)}" height="${h.toFixed(2)}" rx="1.5"/>`; }).join('');
+  const hits = days.map((v, d) => `<rect class="bhit" data-act="bday" data-id="${d}" x="${(L + d * bw).toFixed(2)}" y="0" width="${bw.toFixed(2)}" height="${VH}" fill="transparent"/>`).join('');
+  const xl = [1, 5, 10, 15, 20, 25, nd].map(d => `<text x="${(L + (d - 1) * bw + bw / 2).toFixed(2)}" y="${top + H + 13}" text-anchor="middle">${d}</text>`).join('');
+  const al = avg ? `<line class="avg" x1="${L}" x2="${W}" y1="${y(avg)}" y2="${y(avg)}"/>` : '';
+  const mxv = Math.max(...days); const big = days.indexOf(mxv); const MSn = MS[+m.slice(5) - 1];
+  const tip = (d) => { if (d < 0) return { st: '', html: '' }; const xp = (L + d * bw + bw / 2) / W * 100; const cx = Math.min(80, Math.max(20, xp)); const yp = (y(days[d]) - 6) / VH * 100;
+    return { st: `left:${cx}%;top:${yp}%;--ax:calc(50% + ${((xp - cx) / 100).toFixed(4)} * var(--cw, 300px))`, html: `<span>${MSn} ${d + 1} (${WD[dow(d)]})</span><b>${fmt(disp === 'USD' ? Math.round(days[d] / rate) : days[d], disp)}</b><span>${cnt[d] === 1 ? '1 payment' : cnt[d] + ' payments'}</span>` }; };
+  const t0 = tip(sel); window._bdTip = tip;
+  const inc = T === 'income';
+  return `<div class="card bd${inc ? ' inc' : ''}"><div class="bdh"><div class="lbl">By day · ${MSn}</div><span class="sub">tap a day</span></div>
+    <div class="bdw"><svg viewBox="0 0 ${W} ${VH}" width="100%">${g}${bars}${al}${xl}${hits}</svg><div class="bdtip${sel >= 0 ? ' on' : ''}" style="${t0.st}">${t0.html}</div></div>
+    <div class="bdleg"><span><i></i>Weekdays</span><span><i class="we"></i>Weekend</span>${avg ? `<span><i class="ln"></i>Average ${shortAmt(avg, disp, rate)} / day</span>` : ''}</div>
+    <div class="bdst"><div><b>${shortAmt(avg, disp, rate)}</b>average day</div><div><b>${shortAmt(mxv, disp, rate)}</b>${mxv ? `biggest · ${MSn} ${big + 1}` : 'biggest day'}</div><div><b>${days.slice(0, passed).filter(v => !v).length}</b>${inc ? 'days without income' : 'no-spend days'}</div></div></div>`;
+}
+function bdPick(d) {
+  const box = document.querySelector('.bd'); if (!box) return; const m = curMonth(); const T = S.statT === 'income' ? 'income' : 'expense';
+  const cur = S.bdSel && S.bdSel.m === m && S.bdSel.T === T ? S.bdSel.d : -1; const nx = cur === d ? -1 : d;
+  S.bdSel = nx >= 0 ? { m, T, d: nx } : null;
+  box.querySelectorAll('.br').forEach(r => { const i = +r.dataset.i; r.classList.toggle('sel', nx >= 0 && i === nx); r.classList.toggle('dim', nx >= 0 && i !== nx); });
+  const tp = box.querySelector('.bdtip'); const w = box.querySelector('.bdw');
+  if (nx >= 0 && window._bdTip) { const t = window._bdTip(nx); tp.setAttribute('style', t.st + ';--cw:' + w.clientWidth + 'px'); tp.innerHTML = t.html; requestAnimationFrame(() => tp.classList.add('on')); }
+  else tp.classList.remove('on');
+  haptic('select');
+}
 function pgStats() {
   const m = curMonth(); const per = S.per || '1M'; const rng = perRange(m, per); const T = S.statT === 'income' ? 'income' : 'expense'; const sp = spentByRoot(m, S.space, rng, T); const disp = S.dispCur || 'UZS'; const rate = curRate();
   const conv = (v) => disp === 'USD' ? v / rate : v; const f = (v) => disp === 'USD' ? fmt(Math.round(conv(v)), 'USD') : fmt(v, 'UZS');
@@ -750,11 +789,6 @@ function pgStats() {
       const open = it.id !== '_none';
       det[it.id] = `<div class="sdet" data-for="${it.id}"><div class="sdin">${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => k === '_gen' || !byId('categories', k) ? `<div class="sdr"><span>General</span><span>${f(v)}</span><i class="sdc0"></i></div>` : `<div class="sdr go" data-act="catgo" data-id="${k}"><span>${esc(byId('categories', k).name)}</span><span>${f(v)}</span>${chv}</div>`).join('')}${open ? `<div class="sdr go sdall" data-act="catgo" data-id="${it.id}"><span>All in ${esc(it.c ? it.c.name : '')}</span><span></span>${chv}</div>` : ''}</div></div>`; });
   const donutOr = donut || `<div class="sub">${T === 'income' ? 'No income' : 'No expenses'}</div>`;
-  // столбцы по дням
-  const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
-  rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === T && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
-  const mx = Math.max(1, ...days); const bw = 300 / nd;
-  const bars = `<svg viewBox="0 0 300 100" width="100%" height="110" preserveAspectRatio="none">${days.map((v, i) => `<rect x="${i * bw + 1}" y="${100 - v / mx * 96}" width="${bw - 2}" height="${v / mx * 96}" rx="2" fill="var(--pri)"/>`).join('')}</svg>`;
   const bud = per === '1M' ? budgetFor(null, m) : null;
   const step = PERN[per] || 1; const ttl = (T === 'income' ? { '1M': 'Earned this month', '3M': 'Earned in 3 months', '1Y': 'Earned in 12 months', All: 'Earned all time' } : { '1M': 'Spent this month', '3M': 'Spent in 3 months', '1Y': 'Spent in 12 months', All: 'Spent all time' })[per];
   return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>
@@ -764,7 +798,7 @@ function pgStats() {
   <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big ${T === 'income' ? 'pos' : 'neg'}">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donutOr}</div>
   ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span><svg class="lga" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>${det[it.id] || ''}`).join('')}</div>
   ${trendChart(m, disp, rate, T)}
-  ${per === '1M' ? `<div class="card"><div class="lbl">By day</div>${bars}</div>` : ''}`;
+  ${per === '1M' ? byDayChart(m, disp, rate, T) : ''}`;
 }
 function pgAccounts() {
   const accs = accounts();
@@ -1231,6 +1265,7 @@ document.addEventListener('click', async (e) => {
     case 'mprev': S.month = shiftMonth(curMonth(), -(+id || 1)); render(); break;
     case 'mnext': S.month = shiftMonth(curMonth(), +id || 1); render(); break;
     case 'per': S.per = id; haptic('select'); render(); break;
+    case 'bday': bdPick(+id); break;
     case 'trendm': trPick('st', id); S.month = id; S.per = '1M'; haptic('select'); render(); break;
     case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic('select'); render(true); break; }
     case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic('select'); render(); break;
