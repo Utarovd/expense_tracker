@@ -409,7 +409,8 @@ let lockY = null;
 function lockScroll() { if (lockY !== null) return; lockY = window.scrollY || 0; const b = document.body; b.style.position = 'fixed'; b.style.top = -lockY + 'px'; b.style.left = '0'; b.style.right = '0'; b.style.width = '100%'; }
 function unlockScroll() { if (lockY === null) return; const y = lockY; lockY = null; const b = document.body; b.style.position = b.style.top = b.style.left = b.style.right = b.style.width = ''; window.scrollTo({ top: y, behavior: 'instant' }); }
 function openSheet(html) {
-  if (!ovEl) { lockScroll(); ovEl = document.createElement('div'); ovEl.className = 'ov'; ovEl.innerHTML = '<div class="sheet"></div>'; ovEl.addEventListener('mousedown', e => { if (e.target === ovEl) closeSheet(); }); document.body.appendChild(ovEl); requestAnimationFrame(() => requestAnimationFrame(() => ovEl && ovEl.classList.add('open'))); }
+  if (!ovEl) { Object.keys(segPos).forEach(k => { if (k.endsWith(':ov')) delete segPos[k]; }); // новое окно: плашка Expense/Income/Transfer сразу на своей вкладке, без проезда от прошлого окна
+    lockScroll(); ovEl = document.createElement('div'); ovEl.className = 'ov'; ovEl.innerHTML = '<div class="sheet"></div>'; ovEl.addEventListener('mousedown', e => { if (e.target === ovEl) closeSheet(); }); document.body.appendChild(ovEl); requestAnimationFrame(() => requestAnimationFrame(() => ovEl && ovEl.classList.add('open'))); }
   ovEl.firstChild.innerHTML = '<i class="grab"></i><button type="button" class="shx" aria-label="Close" data-act="shclose">×</button>' + html;
 }
 // закрытие: шторка уезжает вниз до конца (по её собственной анимации, в т.ч. пружине после свайпа), и только потом окно убирается;
