@@ -478,3 +478,6 @@ button.catf.none{color:var(--mut)}
 .ov{background:none;opacity:1}
 .ov::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.4);opacity:0;transition:opacity var(--dimt,.28s) ease;pointer-events:none}
 .ov.open::before{opacity:var(--dim,1)}
+/* подсказки в полях (placeholder) заметно бледнее настоящего текста, чтобы не путать с введённым */
+input::placeholder,textarea::placeholder{color:var(--tx);opacity:.3}
+button.catf.none{color:rgba(20,22,28,.3)}:root[data-theme=dark] button.catf.none{color:rgba(241,243,248,.3)}
