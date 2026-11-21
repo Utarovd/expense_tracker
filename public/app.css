@@ -477,3 +477,7 @@ button.catf.none{color:var(--mut)}
 .rgp .cpi .grow{display:flex;flex-direction:column;gap:2px}
 .rgp .cpi{padding-left:46px}
 .rgp .cpi::before{left:36px}
+
+/* клавиатура открыта: фон шторки продолжается под плавающей панелью ✓ над клавиатурой (без просвета страницы) */
+.ov.kb::after{content:"";position:absolute;top:100%;left:0;right:0;margin:0 auto;max-width:560px;height:100vh;background:var(--card);pointer-events:none}
+.cpnt .cpb,.cpnt .cpbi,.cpnt .cpa{transition:none!important}

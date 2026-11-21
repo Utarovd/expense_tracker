@@ -160,15 +160,22 @@ function openCatPicker(btn) {
   el.addEventListener('click', (e) => {
     const tg = e.target.closest('[data-tog]');
     if (tg) { // раскрыть раздел (открытые остальные сворачиваются одновременно)
-      const s = tg.parentNode, was = s.classList.contains('open');
-      el.querySelectorAll('.cps.open').forEach(x => { if (x !== s) x.classList.remove('open'); });
-      s.classList.toggle('open', !was); haptic();
-      // раскрытый раздел у нижнего края: список плавно докручивается, чтобы подкатегории были видны
-      if (!was) setTimeout(() => { const lb = list.getBoundingClientRect(), sb = s.getBoundingClientRect(); const over = sb.bottom - lb.bottom + 8; if (over > 0) list.scrollBy({ top: Math.min(over, sb.top - lb.top - 4), behavior: 'smooth' }); }, 310);
+      const s = tg.parentNode, was = s.classList.contains('open'), others = [...el.querySelectorAll('.cps.open')].filter(x => x !== s);
+      const apply = (on) => { others.forEach(x => x.classList.toggle('open', !on)); s.classList.toggle('open', on ? !was : was); };
+      // раскрытый раздел у нижнего края: список докручивается ОДНОВРЕМЕННО с раскрытием (без паузы и второго рывка).
+      // Конечное положение меряем заранее: на миг ставим итоговое состояние без анимации, меряем и возвращаем — на экране не видно.
+      let tgt = null;
+      if (!was) { list.classList.add('cpnt'); apply(true); const top = s.offsetTop, h = s.offsetHeight; apply(false); void list.offsetHeight; list.classList.remove('cpnt'); void list.offsetHeight;
+        const cur = list.scrollTop, ch = list.clientHeight; let t = cur; if (top + h + 8 > cur + ch) t = top + h + 8 - ch; if (t > top - 4) t = top - 4; if (top - 4 < cur) t = top - 4; if (Math.abs(t - cur) > 1) tgt = { from: cur, to: Math.max(0, t) }; }
+      apply(true); haptic('select');
+      if (tgt) { const t0 = performance.now(), D = 300, ease = (x) => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+        const step = (now) => { const k = Math.min(1, (now - t0) / D); list.scrollTop = tgt.from + (tgt.to - tgt.from) * ease(k); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
       return;
     }
     const r = e.target.closest('[data-cid]'); if (!r) { if (e.target === el) close(); return; }
-    F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic(); close();
+    F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic('select'); close();
+    // новая операция: после выбора категории сразу открывается клавиатура в Note (фокус в том же тапе, иначе iOS не покажет клавиатуру)
+    if (key === 'category' && !F.id) { const n = sheetEl() && sheetEl().querySelector('[data-f=note]'); if (n) { n.dataset.center = '1'; n.focus({ preventScroll: true }); } }
   });
   // свайп вниз: шторка едет за пальцем, когда список вверху; отпускание — пружина со скоростью пальца
   let st = null;
@@ -316,7 +323,7 @@ function splitQuick(text) {
 function quickAdd(text) {
   const items = splitQuick(text).map(parseQuick); if (!items.length || items.some(q => !q)) return toast('Didn’t get that. Example: “lunch 58000, taxi 25k”');
   if (items.length === 1) return quickOne(items[0]);
-  const done = items.map(q => quickOne(q, true)).filter(Boolean); haptic();
+  const done = items.map(q => quickOne(q, true)).filter(Boolean); haptic('success');
   toast(`Added ${done.length}: ` + done.map(d => `${d.q.income ? '+' : '−'}${fmt(d.q.amount, d.acc.currency)}${d.q.note ? ' ' + d.q.note : ''}`).join(' · '));
 }
 function quickOne(q, quiet) {
@@ -329,7 +336,7 @@ function quickOne(q, quiet) {
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
   if (quiet) return { q, acc };
-  haptic(); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
+  haptic('success'); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
 }
 
 // ---------- UI-утилиты ----------
@@ -714,7 +721,7 @@ function openRule(i) {
 function saveRule() {
   const w = String(F.rw || '').trim().toLowerCase(); if (!w) return toast('Enter a word'); if (!F.rc) return toast('Pick a category');
   const r = rules(); if (F.ri === '') r.push({ w, c: F.rc }); else r[+F.ri] = { w, c: F.rc };
-  const nw = F.ri === ''; saveRules(r); const rc = byId('categories', F.rc); S.rOpen = rc ? (rc.parent_id || rc.id) : S.rOpen; closeSheet(); haptic(nw ? 'success' : 'light'); render(true); toast('Saved · old transactions are not changed');
+  saveRules(r); const rc = byId('categories', F.rc); S.rOpen = rc ? (rc.parent_id || rc.id) : S.rOpen; closeSheet(); haptic('success'); render(true); toast('Saved · old transactions are not changed');
 }
 async function deleteRule() {
   if (!(await ask('Delete this rule?', '“' + F.rw + '” → ' + catLabel(F.rc)))) return;
@@ -863,13 +870,13 @@ function saveTx() {
     put('transactions', tx);
     // новая заметка с выбранной категорией: предложить запомнить правило (один раз, тапом по подсказке)
     const w = tx.category_id && !F.autoCat ? ruleWord(tx.note) : '';
-    if (w && !ruleCat(tx.note) ) { closeSheet(); haptic(); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); haptic(); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
+    if (w && !ruleCat(tx.note) ) { closeSheet(); haptic('success'); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); haptic('success'); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
   }
-  closeSheet(); haptic(); toast('Saved');
+  closeSheet(); haptic('success'); toast('Saved');
 }
 function deleteTx() {
   if (F.type === 'transfer') (F.legs || []).forEach(l => del('transactions', l.id)); else del('transactions', F.id);
-  closeSheet(); haptic(); toast('Deleted');
+  closeSheet(); haptic('warning'); toast('Deleted');
 }
 function openAcc(id) {
   const a = id ? byId('accounts', id) : { type: 'card_uzs', currency: 'UZS', name: '', card_last4: '', opening_balance: 0, hidden: 0, exclude_from_total: 0 };
@@ -990,10 +997,10 @@ document.addEventListener('click', async (e) => {
     case 'space': S.space = id; S.balShown = null; persist(); render(); break;
     case 'mprev': S.month = shiftMonth(curMonth(), -(+id || 1)); render(); break;
     case 'mnext': S.month = shiftMonth(curMonth(), +id || 1); render(); break;
-    case 'per': S.per = id; haptic(); render(); break;
-    case 'trendm': S.month = id; S.per = '1M'; haptic(); render(); break;
-    case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic(); render(true); break; }
-    case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic(); render(); break;
+    case 'per': S.per = id; haptic('select'); render(); break;
+    case 'trendm': S.month = id; S.per = '1M'; haptic('select'); render(); break;
+    case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic('select'); render(true); break; }
+    case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic('select'); render(); break;
     case 'accf': S.accF = id; render(); break;
     case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/history'); break;
     case 'uncatf': S.uncat = !S.uncat; render(); break;
@@ -1008,7 +1015,7 @@ document.addEventListener('click', async (e) => {
     case 'accnew': openAcc(null); break;
     case 'fflag': F[id] = F[id] ? 0 : 1; a.classList.toggle('on'); break;
     case 'accsave': saveAcc(); break;
-    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic(); toast('Deleted'); } break;
+    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic('warning'); toast('Deleted'); } break;
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
     case 'ruleedit': openRule(id || ''); break;
@@ -1025,8 +1032,8 @@ document.addEventListener('click', async (e) => {
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
     case 'theme': tryLS(() => localStorage.setItem('theme', id)); smoothTheme(() => { applyTheme(); render(true); }); break;
-    case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic(); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
-    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic(); render(true); break;
+    case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic('select'); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
+    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic('select'); render(true); break;
     case 'pwsave': {
       const v = (i) => document.getElementById(i).value; const er = document.getElementById('pwerr'); er.textContent = '';
       if (v('pw1').length < 8) { er.textContent = 'New password must be at least 8 characters'; break; }
@@ -1034,7 +1041,7 @@ document.addEventListener('click', async (e) => {
       const r = await api('/api/password', { method: 'POST', body: JSON.stringify({ current: v('pw0'), next: v('pw1') }) }).catch(() => null);
       if (!r) { er.textContent = 'No connection to the server'; break; }
       if (!r.ok) { er.textContent = r.data.error === 'wrong_current' ? 'Current password is wrong' : 'Couldn’t change the password'; break; }
-      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic(); toast('Password changed'); break;
+      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic('success'); toast('Password changed'); break;
     }
     case 'syncnow': await sync(); toast('Done'); break;
     case 'copyhook': tryLS(() => navigator.clipboard.writeText(S.me.hook_url)); toast('Copied'); break;
@@ -1281,7 +1288,11 @@ function syncClr() {
   function showField(el) {
     const fit = () => { if (document.activeElement !== el) return; const vv = window.visualViewport; const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight; const top = vv ? vv.offsetTop : 0;
       const r = el.getBoundingClientRect(); const sc = el.closest('.sheet') || document.scrollingElement; let d = 0;
-      if (r.bottom > bottom - 16) d = r.bottom - (bottom - 16); else if (r.top < top + 16) d = r.top - (top + 16); if (d) sc.scrollBy({ top: d, behavior: 'smooth' }); };
+      if (el.dataset.center) { // после выбора категории: поле Note встаёт по центру видимой части шторки
+        delete el.dataset.center; const sr = sc.getBoundingClientRect(); const vt = Math.max(top, sr.top), vb = Math.min(bottom, sr.bottom);
+        d = (r.top + r.bottom) / 2 - (vt + vb) / 2; d = Math.max(-sc.scrollTop, Math.min(d, sc.scrollHeight - sc.clientHeight - sc.scrollTop));
+      } else if (r.bottom > bottom - 16) d = r.bottom - (bottom - 16); else if (r.top < top + 16) d = r.top - (top + 16);
+      if (Math.abs(d) > 1) sc.scrollBy({ top: d, behavior: 'smooth' }); };
     const vv = window.visualViewport; let done = false; const once = () => { if (done) return; done = true; if (vv) vv.removeEventListener('resize', once); setTimeout(fit, 60); };
     if (vv) vv.addEventListener('resize', once); setTimeout(once, 450); }
   window.showField = showField;
@@ -1290,14 +1301,28 @@ function syncClr() {
   const vv = window.visualViewport;
   if (vv) { const kbFit = () => { if (!ovEl) return; const sh = ovEl.firstChild; const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       const ae = document.activeElement; const typing = ae && /INPUT|TEXTAREA/.test(ae.tagName) && !/checkbox|radio|button/.test(ae.type || '') && ovEl.contains(ae);
-      if (kb > 80 && typing) { ovEl.style.top = vv.offsetTop + 'px'; ovEl.style.bottom = kb + 'px'; if (sh) sh.style.maxHeight = (vv.height - 12) + 'px'; }
-      else { ovEl.style.top = ''; ovEl.style.bottom = ''; if (sh) sh.style.maxHeight = ''; } };
+      // верх шторки не заходит под часы/статус-бар: отступ = безопасная зона сверху + 16 px (в приложении шторка иначе упиралась в часы)
+      const safe = parseFloat(getComputedStyle(document.body).paddingTop) || 0, gap = Math.max(12, safe + 16 - vv.offsetTop);
+      if (kb > 80 && typing) { ovEl.style.top = vv.offsetTop + 'px'; ovEl.style.bottom = kb + 'px'; ovEl.classList.add('kb'); if (sh) sh.style.maxHeight = (vv.height - gap) + 'px'; }
+      else { ovEl.style.top = ''; ovEl.style.bottom = ''; ovEl.classList.remove('kb'); if (sh) sh.style.maxHeight = ''; } };
     vv.addEventListener('resize', kbFit); vv.addEventListener('scroll', kbFit); document.addEventListener('focusout', () => setTimeout(kbFit, 350)); document.addEventListener('focusin', () => setTimeout(kbFit, 350)); }
   document.addEventListener('touchstart', clear, { passive: false, capture: true }); document.addEventListener('mousedown', clear, true);
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.clrx')) { e.preventDefault(); e.stopPropagation(); } }, true);
   let q = 0; const later = () => { cancelAnimationFrame(q); q = requestAnimationFrame(syncClr); };
   document.addEventListener('input', later); window.addEventListener('resize', later);
   new MutationObserver((ms) => { if (ms.some(m => [...m.addedNodes].some(n => n.nodeType === 1 && !(n.classList && n.classList.contains('clrx'))))) later(); }).observe(document.documentElement, { childList: true, subtree: true });
+})();
+// окно «+»: ✓ на клавиатуре после суммы открывает выбор категории (Doniyor 21.11).
+// ✓ (Done) просто снимает фокус: отличаем его от тапа по экрану — в момент потери фокуса пальца на экране не было.
+(() => {
+  let touching = false, lastT = 0; const t0 = () => { touching = true; lastT = Date.now(); }, t1 = () => { touching = false; lastT = Date.now(); };
+  document.addEventListener('touchstart', t0, { capture: true, passive: true }); document.addEventListener('touchend', t1, { capture: true, passive: true }); document.addEventListener('touchcancel', t1, { capture: true, passive: true });
+  document.addEventListener('mousedown', () => { lastT = Date.now(); }, true);
+  const next = (am) => { const sh = sheetEl(); if (!sh || !sh.contains(am) || F.id || F.type === 'transfer' || !(num(F.amount) > 0) || document.querySelector('.cp')) return false;
+    const b = sh.querySelector('.catf[data-cf=category]'); if (!b) return false; openCatPicker(b); return true; };
+  document.addEventListener('focusout', (e) => { const am = e.target; if (!am || am.id !== 'f-amount' || e.relatedTarget || touching || Date.now() - lastT < 400) return;
+    setTimeout(() => { if (document.hidden || !am.isConnected) return; const ae = document.activeElement; if (ae && ae !== document.body && sheetEl() && sheetEl().contains(ae)) return; next(am); }, 60); });
+  document.addEventListener('keydown', (e) => { const am = e.target; if (e.key !== 'Enter' || !am || am.id !== 'f-amount') return; e.preventDefault(); lastT = Date.now(); if (next(am)) am.blur(); });
 })();
 // окно «+»: свайп влево/вправо переключает Expense / Income / Transfer; плашка и всё содержимое под ней едут за пальцем синхронно.
 // Плавность: соседние формы строятся при касании (до начала движения) и заранее выносятся в свои слои;

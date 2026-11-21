@@ -5,7 +5,7 @@ name: iOS build
 on:
   push:
     branches: [main]
-    paths: ['native/**', 'public/**', '.github/workflows/ios.yml']
+    paths: ['native/**', '.github/workflows/ios.yml']
   workflow_dispatch:
 
 permissions:
@@ -39,6 +39,7 @@ jobs:
       - run: npx cap sync ios
       - name: Build (unsigned; AltStore signs it with your Apple ID)
         run: |
+          set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
@@ -91,9 +92,10 @@ jobs:
       - run: npm ci && npx cap sync ios
       - name: Build for simulator
         run: |
+          set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build | tail -5
+            CODE_SIGNING_ALLOWED=NO build | tail -60
       - name: Run and screenshot
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print([x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')][-1])")
