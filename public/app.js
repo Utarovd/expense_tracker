@@ -269,11 +269,47 @@ const IC = {
   tag: 'M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0zM8 8h.01',
   ok: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.3l2.7 2.7L16 9.5',
   bad: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6',
+  coffee: 'M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8zM17 9h1.5a2.5 2.5 0 0 1 0 5H17M7.5 3v2.5M10.5 3v2.5M13.5 3v2.5M5 21h11',
+  cart: 'M3 4h2l2.2 10.3a1.5 1.5 0 0 0 1.5 1.2h8.5a1.5 1.5 0 0 0 1.4-1.1L20.5 8H6M8.4 20a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0-2.4 0M15.6 20a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0-2.4 0',
+  burger: 'M4 10a8 6 0 0 1 16 0H4zM3 13.5h18M4 17h16a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z',
+  wine: 'M8 2.5h8l-.5 6a3.5 3.5 0 0 1-7 0L8 2.5zM12 12v9M8.5 21h7',
+  bus: 'M6 3h12a2 2 0 0 1 2 2v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2zM4 11h16M7 17v3M17 17v3M8 14h.01M16 14h.01',
+  fuel: 'M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M7 8h4M14 10h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 3 0V8l-3-3',
+  wrench: 'M14.5 3.5a5 5 0 0 0-5.8 6.6L3 15.8V21h5.2l5.7-5.7a5 5 0 0 0 6.6-5.8l-3 3-3.5-1-1-3.5 3-3z',
+  plane: 'M21 3L3 10.5l7 3 3 7.5L21 3zM10 13.5L21 3',
+  bed: 'M3 19V6M3 14h18v5M21 14v-2a3 3 0 0 0-3-3h-7v5M7 11.5h.01',
+  sun: 'M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  film: 'M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4',
+  music: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+  ball: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5l4 2.9-1.5 4.6h-5L8 10.4l4-2.9zM12 3v4.5M16 10.4l4.6-1.4M14.5 15l2.8 4M9.5 15l-2.8 4M8 10.4L3.4 9',
+  gym: 'M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11',
+  pill: 'M10.5 3.5a5 5 0 0 1 7 7l-7 7a5 5 0 0 1-7-7l7-7zM7 10l7 7',
+  baby: 'M12 3a9 9 0 0 1 9 9h-9V3zM3 12h9M5 12a7 7 0 0 0 14 0M6.5 20.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M14.5 20.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0',
+  grad: 'M2 9l10-5 10 5-10 5L2 9zM6 11v5c3 2.5 9 2.5 12 0v-5M22 9v6',
+  book: 'M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5v-15zM4 19.5A1.5 1.5 0 0 0 5.5 21H20M8 7h8',
+  shirt: 'M8 3L3 6l2 4 2-1v12h10V9l2 1 2-4-5-3a4 4 0 0 1-8 0z',
+  cut: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.1 7.9L20 20M8.1 16.1L20 4',
+  paw: 'M12 13c-3 0-5.5 3.5-5.5 5.5 0 1.5 1.2 2.5 2.7 2.5 1 0 1.8-.5 2.8-.5s1.8.5 2.8.5c1.5 0 2.7-1 2.7-2.5 0-2-2.5-5.5-5.5-5.5zM4.5 10.5a1.8 2.2 0 1 0 3.6 0a1.8 2.2 0 1 0-3.6 0M15.9 10.5a1.8 2.2 0 1 0 3.6 0a1.8 2.2 0 1 0-3.6 0M7.8 5.5a1.8 2.2 0 1 0 3.6 0a1.8 2.2 0 1 0-3.6 0M12.6 5.5a1.8 2.2 0 1 0 3.6 0a1.8 2.2 0 1 0-3.6 0',
+  phone: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2',
+  wifi: 'M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01',
+  bolt: 'M13 2L4 14h7l-1 8 9-12h-7l1-8z',
+  drop: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z',
+  work: 'M3 8h18v12H3V8zM8 8V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v3M3 13h18',
+  piggy: 'M5 11.5a7 6 0 0 1 12.5-3.5H20v4l-2 1a7 6 0 0 1-2 3V19h-3v-2h-3v2H7v-3.2a6 6 0 0 1-2-4.3zM15 10.5h.01M2.5 10c0 1.5 1 2 2.5 2',
+  leaf: 'M5 19C5 10 11 4 20 4c0 9-6 15-15 15zM5 19l8-8',
 };
 const svg = (n, sz = 22) => `<svg class="i i-${n}" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
 const CATIC = { food: 'food', home: 'home', leisure: 'game', transport: 'car', expenses: 'receipt', nilufar: 'heart', family: 'family', 'family & kids': 'family', shopping: 'bag', health: 'med',
   'gifts & events': 'gift', finance: 'card', other: 'tag', salary: 'wallet', business: 'bag', gifts: 'gift', cashback: 'rate', 'other income': 'plus' };
-const rootIcon = (r, sz) => !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
+// своя иконка категории: icon = '@ключ.цвет' (выбирается в окне категории); иначе старая логика (по названию / emoji)
+const ICCOL = { def: ['', '', '', ''], orange: ['#fff0e3', '#f97316', '#3a2414', '#ff9a4d'], amber: ['#fcf2dc', '#d97706', '#3a2c12', '#f5b544'],
+  green: ['#e1f6e8', '#16a34a', '#133222', '#4ade80'], teal: ['#dff6f3', '#0d9488', '#12322f', '#3fd0c8'], sky: ['#e0f3fd', '#0ea5e9', '#11303e', '#38bdf8'], blue: ['#e7f0ff', '#3b82f6', '#1c2a45', '#6aa1ff'],
+  indigo: ['#ebebff', '#6366f1', '#24234a', '#8b8cf8'], violet: ['#f1ebff', '#8b5cf6', '#2b2245', '#a78bfa'], pink: ['#fde7f3', '#ec4899', '#3a1a2c', '#f472b6'], red: ['#fde7e7', '#ef4444', '#3a1a1c', '#ff7a7a'], slate: ['#eef1f5', '#64748b', '#262c36', '#a3adbd'] };
+const CICONS = ['food', 'coffee', 'burger', 'cart', 'wine', 'home', 'bolt', 'drop', 'wifi', 'phone', 'car', 'fuel', 'wrench', 'bus', 'plane', 'bed', 'sun', 'game', 'film', 'music', 'ball', 'gym', 'med', 'pill', 'heart', 'family', 'baby', 'user', 'paw', 'grad', 'book', 'bag', 'shirt', 'cut', 'gift', 'ring', 'receipt', 'card', 'cash', 'wallet', 'piggy', 'rate', 'work', 'leaf', 'globe', 'tag'];
+const ICDEF = { food: 'orange', coffee: 'amber', burger: 'orange', cart: 'green', wine: 'violet', home: 'def', bolt: 'def', drop: 'sky', wifi: 'blue', phone: 'indigo', car: 'blue', fuel: 'amber', wrench: 'slate', bus: 'blue', plane: 'sky', bed: 'indigo', sun: 'def', game: 'violet', film: 'red', music: 'pink', ball: 'green', gym: 'red', med: 'red', pill: 'teal', heart: 'red', family: 'pink', baby: 'pink', user: 'blue', paw: 'amber', grad: 'indigo', book: 'teal', bag: 'amber', shirt: 'violet', cut: 'pink', gift: 'red', ring: 'violet', receipt: 'teal', card: 'indigo', cash: 'green', wallet: 'green', piggy: 'pink', rate: 'green', work: 'slate', leaf: 'green', globe: 'sky', tag: 'slate' };
+const parseIc = (v) => { const m = /^@([a-z]+)\.([a-z]+)$/.exec(v || ''); return m && IC[m[1]] ? { k: m[1], c: ICCOL[m[2]] ? m[2] : 'def' } : null; };
+const icSvg = (k, c, sz) => svg(k, sz).replace('class="i ', `class="i ${c && c !== 'def' ? 'col-' + c + ' ' : ''}`);
+const rootIcon = (r, sz) => r && parseIc(r.icon) ? icSvg(parseIc(r.icon).k, parseIc(r.icon).c, sz) : !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
 const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
 const catIcon = (id) => rootIcon(rootOf(id));
 function spentByRoot(m, space = S.space, rng) {
@@ -602,7 +638,7 @@ function pgTrans() {
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
-const colOf = (it, i) => (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length];
+const colOf = (it, i) => { const p = it.c && parseIc(it.c.icon); if (p && p.c !== 'def') return ICCOL[p.c][document.documentElement.dataset.theme === 'dark' ? 3 : 1]; return (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length]; };
 function selSlice(id) {
   const box = document.querySelector('.dwrap'); if (!box) return;
   const cur = box.dataset.sel || ''; const nx = cur === id ? '' : id; box.dataset.sel = nx; box.classList.toggle('has', !!nx);
@@ -895,14 +931,68 @@ function saveAcc() {
   put('accounts', { ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, name: F.name.trim(), type: F.type, currency: prev ? prev.currency : cur, opening_balance: Math.round((num(F.opening) || 0) * 100), card_last4: F.card_last4 || '', sort: prev ? prev.sort : accounts().length, hidden: F.hidden ? 1 : 0, exclude_from_total: F.exclude_from_total ? 1 : 0 });
   closeSheet();
 }
+// Иконка по названию: словарь слов (рус/англ/узб), работает сразу и без сети. Нет совпадения — спрашиваем ИИ на сервере (если онлайн).
+// Порядок важен: первое совпадение по началу слова побеждает (card раньше car, business раньше bus).
+const ICWORDS = [
+  ['cut', 'beauty красот barber барбер парикмах salon салон haircut стриж cosmet космет маникюр nail'], ['card', 'credit кредит loan заём займ долг debt bank банк financ финанс'],
+  ['work', 'work работ business бизнес office офис ish freelance фриланс'], ['med', 'health здоров doctor врач hospital больниц clinic клиник медиц salomat dentist стомат зуб'],
+  ['pill', 'pharm аптек лекар medicine dori vitamin витамин'], ['gym', 'gym фитнес fitness тренаж workout'], ['ball', 'sport спорт football футбол tennis теннис swim бассейн'],
+  ['game', 'game игр gaming playstation steam xbox oyin o\'yin компы leisure досуг'], ['film', 'movie кино cinema film netflix фильм'], ['music', 'music музык spotify concert концерт'],
+  ['coffee', 'coffee кофе cafe кафе tea чай choy'], ['burger', 'fast burger бургер pizza пицц snack снек перекус шаурм lavash лаваш'], ['wine', 'alcohol алког bar бар beer пиво wine вин drink напит'],
+  ['cart', 'grocer продукт magazin магазин market маркет супермаркет korzinka makro bozor базар oziq'], ['food', 'food еда eat обед lunch dinner ужин завтрак breakfast ovqat restaurant ресторан dine nutrition питан'],
+  ['bolt', 'utilit коммун электр electric свет kommunal'], ['drop', 'water вода suv'], ['wifi', 'internet интернет wifi wi-fi'], ['phone', 'phone телефон mobile мобил связь ucell beeline uzmobile mobiuz'],
+  ['home', 'home house дом квартир rent аренд uy ijara household хозяйств'], ['fuel', 'fuel бензин benzin заправ petrol gas газ metan метан propan пропан'],
+  ['wrench', 'service сервис ремонт repair tools инструмент remont'], ['car', 'car авто машин mashina parking парков мойк taxi такси yandex'],
+  ['bus', 'bus автобус metro метро public общест transport транспорт'], ['plane', 'travel trip путеш flight авиа перелёт перелет vacation отпуск sayohat'], ['bed', 'hotel отель гостиниц mehmonxona'],
+  ['sun', 'rest отдых dam'], ['heart', 'love date свидан wife жена girlfriend девушк romance роман'], ['baby', 'kid child baby дет ребен bola bog\'cha садик'],
+  ['family', 'family семь oila parents родит'], ['user', 'friend друз dost do\'st personal личн'], ['paw', 'pet питом dog собак кошк корм'],
+  ['grad', 'educat образов school школ course курс universit учеб talim ta\'lim'], ['book', 'book книг kitob'], ['shirt', 'cloth одежд shirt обув shoes kiyim'],
+  ['bag', 'shop покуп xarid mall шопинг'], ['gift', 'gift подар sovg holiday праздн birthday рожден event событ'], ['ring', 'wedding свадьб tuy to\'y jewel украш'],
+  ['piggy', 'saving сбереж накоп deposit депозит jamg'], ['rate', 'cashback кэшбэк кешбек interest процент'], ['wallet', 'salary зарплат maosh income доход'], ['cash', 'cash налич naqd'],
+  ['receipt', 'bill счет счёт tax налог fee комисс subscription подписк payment платеж платёж expense расход'], ['leaf', 'garden сад plant растен nature'],
+].map(([k, w]) => [k, w.split(' ')]);
+function icGuess(name) {
+  const t = String(name || '').toLowerCase().replace(/ё/g, 'е'); if (!t.trim()) return null;
+  for (const [k, ws] of ICWORDS) if (ws.some(w => new RegExp('(^|[^\\p{L}])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'u').test(t))) return k;
+  return null;
+}
+const LEGCOL = { food: 'orange', game: 'violet', car: 'blue', receipt: 'teal', family: 'pink', bag: 'amber', heart: 'red', wallet: 'green', plus: 'green', card: 'indigo', rate: 'green', tag: 'slate', cash: 'green', globe: 'sky' };
 function openCat(id, parent) {
   const c = id ? byId('categories', id) : { name: '', icon: '', parent_id: parent || null, kind: parent ? (byId('categories', parent) || {}).kind : 'expense' };
   F = { cat: id, ...c };
-  openSheet(`<h2>${id ? 'Category' : 'New category'}</h2><div class="lbl">Name</div><input class="f" data-f="name" value="${esc(c.name)}">
-  ${c.parent_id ? '' : `<div class="lbl">Icon (emoji)</div><input class="f" data-f="icon" value="${esc(c.icon)}"><div class="lbl">Type</div><select class="f" data-f="kind" ${id ? 'disabled' : ''}><option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>Expense</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>Income</option></select>`}
+  if (!c.parent_id) { // своя иконка: уже выбранная, иначе та, что показывается сейчас (по названию); emoji остаётся, пока не выбрана иконка
+    const p = parseIc(c.icon), leg = CATIC[String(c.name).toLowerCase()];
+    if (p) { F.ic = p.k; F.col = p.c; } else if (c.icon && id && !leg) { F.ic = ''; F.col = 'def'; } else { F.ic = leg || (id ? 'tag' : ''); F.col = LEGCOL[F.ic] || 'def'; }
+    F.icMan = !!id; F.colMan = !!id;
+  }
+  const icTop = c.parent_id ? '' : `<div class="icpv"><span class="ico lg" id="icpv">${icPrev()}</span><b id="icnm">${esc(c.name) || 'Name'}</b></div>`;
+  const icPick = c.parent_id ? '' : `<div class="lbl">Icon <span class="ichint" id="ichint">${id ? '' : 'picked from the name'}</span></div><div class="icg">${CICONS.map(k => `<button type="button" class="icb${F.ic === k ? ' on' : ''}" data-act="icpk" data-id="${k}">${F.ic === k ? icSvg(k, F.col, 22) : svg(k, 22)}</button>`).join('')}</div>
+  <div class="lbl">Color</div><div class="clg">${Object.keys(ICCOL).map(k => `<button type="button" class="clb${F.col === k ? ' on' : ''}" data-act="clpk" data-id="${k}" aria-label="${k}"><i class="cl-${k}"></i></button>`).join('')}</div>`;
+  openSheet(`<h2>${id ? 'Category' : 'New category'}</h2>${icTop}<div class="lbl">Name</div><input class="f" data-f="name" value="${esc(c.name)}" ${id ? '' : 'autocomplete="off"'}>
+  ${c.parent_id ? '' : `${icPick}<div class="lbl">Type</div><select class="f" data-f="kind" ${id ? 'disabled' : ''}><option value="expense" ${c.kind === 'expense' ? 'selected' : ''}>Expense</option><option value="income" ${c.kind === 'income' ? 'selected' : ''}>Income</option></select>`}
   ${id ? '<div style="display:flex;gap:10px;margin:6px 0 14px"><button class="btn red" data-act="catdel">Delete</button><button class="btn sec" data-act="catarch">Archive</button></div>' : ''}
   <button class="btn full" data-act="catsave">Save</button>`);
 }
+const icPrev = () => F.ic ? icSvg(F.ic, F.col, 34) : rootIcon({ name: F.name, icon: F.icon }, 34);
+function icPaint() {
+  const pv = document.getElementById('icpv'); if (!pv) return; pv.innerHTML = icPrev();
+  const nm = document.getElementById('icnm'); if (nm) nm.textContent = (F.name || '').trim() || 'Name';
+  document.querySelectorAll('.icb').forEach(b => { const on = b.dataset.id === F.ic; if (on || b.classList.contains('on')) b.innerHTML = on ? icSvg(b.dataset.id, F.col, 22) : svg(b.dataset.id, 22); b.classList.toggle('on', on); });
+  document.querySelectorAll('.clb').forEach(b => b.classList.toggle('on', b.dataset.id === F.col));
+}
+// ввод названия: подбираем иконку (пока её не выбрали вручную)
+let icT = 0, icSeq = 0;
+function icAuto() {
+  if (F.icMan || F.parent_id) return icPaint();
+  const nm = (F.name || '').trim(), hint = document.getElementById('ichint'), k = icGuess(nm); clearTimeout(icT); const seq = ++icSeq;
+  const set = (key, how) => { if (F.icMan) return; F.ic = key; if (!F.colMan) F.col = ICDEF[key] || 'def'; if (hint) hint.textContent = how; icPaint(); };
+  if (k) return set(k, 'picked from the name');
+  if (nm.length < 3) return set('', nm ? '' : 'picked from the name');
+  set('', ''); if (!navigator.onLine) return;
+  icT = setTimeout(async () => { try { if (hint) hint.textContent = 'thinking…'; const r = await api('/api/icon', { method: 'POST', body: JSON.stringify({ name: nm }) }, 6000);
+    if (seq !== icSeq || F.icMan) return; if (r && r.icon && IC[r.icon]) set(r.icon, 'suggested by AI'); else if (hint) hint.textContent = ''; } catch (_) { if (seq === icSeq && hint) hint.textContent = ''; } }, 550);
+}
+const icVal = () => F.parent_id ? '' : F.ic ? `@${F.ic}.${F.col || 'def'}` : (F.icon || '');
 function saveCat() {
   if (!F.name.trim()) return toast('Enter a name');
   const prev = F.cat ? byId('categories', F.cat) : null;
@@ -911,9 +1001,9 @@ function saveCat() {
     haptic('success');
     const nm = F.name.trim(), kind = F.kind || 'expense', pid = F.parent_id || null;
     const old = Object.values(S.db.categories).filter(c => c.deleted_at && c.space_id === S.space && c.name === nm && c.kind === kind && (c.parent_id || null) === pid).sort((a, b) => b.updated_at - a.updated_at)[0];
-    if (old) { const sibs = cats().filter(x => (x.parent_id || null) === pid); put('categories', { ...old, deleted_at: null, archived: 0, sort: sibs.length + 1, icon: pid ? '' : (F.icon || old.icon || '') }); closeSheet(); render(true); const n = rows('transactions').filter(t => t.category_id === old.id).length; return toast(n ? `Restored · ${n} old transaction${n > 1 ? 's' : ''} joined` : 'Saved'); }
+    if (old) { const sibs = cats().filter(x => (x.parent_id || null) === pid); put('categories', { ...old, deleted_at: null, archived: 0, sort: sibs.length + 1, icon: pid ? '' : (F.ic ? icVal() : old.icon || '') }); closeSheet(); render(true); const n = rows('transactions').filter(t => t.category_id === old.id).length; return toast(n ? `Restored · ${n} old transaction${n > 1 ? 's' : ''} joined` : 'Saved'); }
   }
-  put('categories', { ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, parent_id: F.parent_id || null, name: F.name.trim(), kind: F.kind || 'expense', sort: prev ? prev.sort : sibs.length + 1, icon: F.icon || '', archived: prev ? prev.archived || 0 : 0 });
+  put('categories', { ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, parent_id: F.parent_id || null, name: F.name.trim(), kind: F.kind || 'expense', sort: prev ? prev.sort : sibs.length + 1, icon: icVal(), archived: prev ? prev.archived || 0 : 0 });
   closeSheet();
 }
 // Удаление категории (Doniyor 21.11): удаляется сразу, операции остаются в истории со своим названием.
@@ -1024,6 +1114,8 @@ document.addEventListener('click', async (e) => {
     case 'ruledel': deleteRule(); break;
     case 'catsave': saveCat(); break;
     case 'catdel': deleteCat(); break;
+    case 'icpk': F.ic = id; F.icMan = true; if (!F.colMan) F.col = ICDEF[id] || 'def'; { const h = document.getElementById('ichint'); if (h) h.textContent = ''; } icPaint(); haptic('select'); break;
+    case 'clpk': F.col = id; F.colMan = true; icPaint(); haptic('select'); break;
     case 'rtog': { const s = a.closest('.rgp'), was = s.classList.contains('open'); document.querySelectorAll('.rgp.open').forEach(x => { if (x !== s) x.classList.remove('open'); }); s.classList.toggle('open', !was); S.rOpen = was ? '' : id; haptic(); break; }
     case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); haptic('warning'); toast('Archived'); break;
     case 'catup': moveCat(-1); break;
@@ -1066,6 +1158,7 @@ document.addEventListener('input', (e) => {
   }
   if (el.dataset.f) { F[el.dataset.f] = el.value;
     if (el.dataset.f === 'category') F.autoCat = false;
+    if (el.dataset.f === 'name' && document.getElementById('icpv')) icAuto();
     if (el.dataset.f === 'note' && F.type && F.type !== 'transfer' && (!F.category || F.autoCat)) { const c = ruleCat(F.note, F.type === 'income' ? 'income' : 'expense') || ''; if (c !== (F.category || '')) { F.category = c; F.autoCat = !!c; const fld = el.closest('.txpane, .sheet').querySelector('[data-cf=category]'); if (fld) setCatField(fld, c); } } if (['from', 'to', 'account'].includes(el.dataset.f) && F.type === 'transfer' || el.dataset.f === 'account') { if (F.type === 'transfer') drawTx(); } }
   if (el.id === 'srch') { S.q = el.value; const p = el.selectionStart; render(); const n = document.getElementById('srch'); if (n) { n.focus(); n.setSelectionRange(p, p); } }
   if (el.dataset.bud !== undefined) { clearTimeout(el._t); el._t = setTimeout(() => saveBudget(el.dataset.bud, el.value), 700); }
@@ -1246,7 +1339,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 })();
 // подсветка нажимаемой области на телефоне: класс .tch на время касания, плавно гаснет после отпускания
 (() => {
-  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx';
+  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx,.icb';
   let el = null, x0 = 0, y0 = 0;
   const off = () => { if (el) el.classList.remove('tch'); el = null; };
   document.addEventListener('touchstart', (e) => { off(); const t = e.target.closest && e.target.closest(SEL); if (!t || t.disabled) return; el = t; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; el.classList.add('tch'); }, { passive: true });
