@@ -99,6 +99,7 @@ function ensureSpace() {
   const sp = rows('spaces').sort((a, b) => a.sort - b.sort);
   if (!sp.length) return;
   if (!S.space || !byId('spaces', S.space) || byId('spaces', S.space).deleted_at) S.space = sp[0].id;
+  { const ps = sp.find(x => x.kind === 'personal'); if (ps && S.space !== ps.id) S.space = ps.id; } // Family пока выключен — всегда личное пространство
   seedRules();
 }
 // ---------- правила «слово → категория»: «компы» → Leisure › Gaming сразу ----------
@@ -435,10 +436,10 @@ function ask(title, msg, okLabel = 'Delete') {
 // ---------- роутинг ----------
 const MAIN = ['/', '/history', '/stats', '/profile'];
 let slideDir = '';
-const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rules': pgRules, '/profile/rate': pgRate, '/profile/settings': pgSettings, '/profile/invite': pgInvite });
+const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/me': pgMe, '/profile/connect': pgConnect, '/profile/rate': pgRate, '/profile/settings': pgSettings, '/profile/invite': pgInvite });
 // порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
 // старые адреса (до 20.11: /more, /accounts …) ведут на новые /profile/… — закладки и PWA продолжают работать
-const OLDP = { '/transactions': '/history', '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings' };
+const OLDP = { '/transactions': '/history', '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings', '/profile/rules': '/profile/categories' };
 const curPath = () => { const p = location.pathname.replace(/\/+$/, '') || '/'; const n = OLDP[p]; if (n) { history.replaceState({}, '', n + location.search); return n; } return p; };
 const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.length - 0.5 : -1;
 const dirTo = (a, b) => { const x = pgIdx(a), y = pgIdx(b); return x > -1 && y > -1 && x !== y ? (y > x ? 'pg-next' : 'pg-prev') : ''; };
@@ -544,7 +545,7 @@ function initSegs() {
     const b = { x: on.offsetLeft, w: on.offsetWidth, t: on.dataset.id || '' };
     if (pl._t === b.t + b.x + ':' + b.w) return; pl._t = b.t + b.x + ':' + b.w;
     pl.dataset.t = b.t; const prev = segPos[key];
-    const put = (x, w, anim) => { segMove(pl, x, w, anim ? '.22s cubic-bezier(.4,0,.2,1)' : ''); pl.style.opacity = 1; };
+    const put = (x, w, anim) => { segMove(pl, x, w, anim ? '.34s cubic-bezier(.32,.72,0,1)' : ''); pl.style.opacity = 1; };
     if (fresh && prev && (prev.x !== b.x || prev.w !== b.w)) { put(prev.x, prev.w, false); requestAnimationFrame(() => requestAnimationFrame(() => put(b.x, b.w, true))); } else put(b.x, b.w, !fresh);
     segPos[key] = b;
   });
@@ -578,7 +579,12 @@ function nav(on) {
   const h = ([p, i, n]) => `<a class="${p === on ? 'on' : ''}" tabindex="-1" aria-hidden="true"><span>${svg(i, 24)}</span>${n}</a>`;
   return `<div class="nav"><div><i class="navpill"><div class="navhi">${it.slice(0, 2).map(h).join('')}<div></div>${it.slice(2).map(h).join('')}</div></i>${it.slice(0, 2).map(a).join('')}<div class="navadd"><button data-act="add" aria-label="Add">${svg('add', 28)}</button></div>${it.slice(2).map(a).join('')}</div></div>`;
 }
-const spaceSwitch = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
+// переключатель Personal/Family пока выключен (Doniyor 21.11): вместо него круглая аватарка → личные данные
+const spaceSwitchOld = () => `<div class="seg">${rows('spaces').sort((a, b) => a.sort - b.sort).map(s => `<button class="${s.id === S.space ? 'on' : ''}" data-act="space" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>`;
+const myName = () => [setting('first_name', ''), setting('last_name', '')].map(x => x.trim()).filter(Boolean).join(' ');
+const initials = () => { const f = setting('first_name', '').trim(), l = setting('last_name', '').trim(); const s = (f[0] || '') + (l[0] || ''); return (s || String((S.me && S.me.login) || S.user || '?')[0] || '?').toUpperCase(); };
+const avatar = (cls = '') => `<span class="ava ${cls}" aria-hidden="true">${esc(initials())}</span>`;
+const spaceSwitch = () => `<button class="avab" data-go="/profile/me" aria-label="Personal data">${avatar()}</button>`;
 const mnav = () => `<div class="mnav"><button data-act="mprev">‹</button><b>${monthName(curMonth())}</b><button data-act="mnext">›</button></div>`;
 const srcIco = { sms: '📱', wallet: '', payme: '🧾', telegram: '✈️' };
 // перевод = одна строка (одна операция — одна карточка): оставляем расходную ногу, вторая показывается в подписи «откуда → куда»
@@ -728,8 +734,8 @@ function pgAccounts() {
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rules', 'tag', 'Rules'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings, Telegram'], ...(S.me && S.me.owner ? [['/profile/invite', 'invite', 'Invite friends']] : [])];
-  return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
+  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings'], ...(S.me && S.me.owner ? [['/profile/invite', 'invite', 'Invite friends']] : [])];
+  return `<div class="top"><h1>Profile</h1></div><div class="card mecard" data-go="/profile/me">${avatar('md')}<div class="grow"><b>${esc(myName() || (S.me && S.me.login) || S.user || '')}</b><span class="sub">Personal data, password, Telegram</span></div><span class="sub">›</span></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
   const m = curMonth(); const sp = spentByRoot(m); const tot = budgetFor(null, m);
@@ -748,10 +754,10 @@ function pgBudget() {
 function pgCats() {
   const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id && !c.archived);
   const hdl = `<span class="hdl" data-hdl aria-label="Drag to reorder">${svg('grip', 20)}</span>`;
-  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row rtop" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><button class="addsub" data-act="catnew" data-id="${r.id}">${svg('add', 18)}<span>Add subcategory</span></button></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>`;
+  return `<div class="top"><h1>Categories</h1>${spaceSwitch()}</div><div class="dz" data-group="root">${roots.map(r => `<div class="card dr" data-id="${r.id}"><div class="row rtop" data-act="catedit" data-id="${r.id}" style="padding-top:0"><div class="ico">${rootIcon(r)}</div><div class="grow"><b>${esc(r.name)}</b><span class="sub">${r.kind === 'income' ? 'income' : 'expense'}</span></div>${hdl}</div><div class="dz" data-group="${r.id}">${cats().filter(c => c.parent_id === r.id && !c.archived).map(c => `<div class="row dr" data-act="catedit" data-id="${c.id}" style="padding-left:56px"><div class="grow">${esc(c.name)}</div>${hdl}</div>`).join('')}</div><button class="addsub" data-act="catnew" data-id="${r.id}">${svg('add', 18)}<span>Add subcategory</span></button></div>`).join('')}</div><button class="btn sec full" data-act="catnew" data-id="">+ Category</button>${rulesBlock()}`;
 }
 // Правила на своей странице, сгруппированы по разделам: заголовок раздела раскрывает его правила (как в выборе категории)
-function pgRules() {
+function rulesBlock() {
   const all = rules().map((r, i) => ({ ...r, i })); const roots = cats('expense').concat(cats('income')).filter(c => !c.parent_id);
   const order = (id) => { const c = byId('categories', id); return c ? c.sort : 999; };
   const groups = roots.map(p => { const ids = new Set([p.id].concat(cats().filter(c => c.parent_id === p.id).map(c => c.id))); return { p, list: all.filter(r => ids.has(r.c)) }; }).filter(g => g.list.length);
@@ -761,7 +767,7 @@ function pgRules() {
     list.sort((a, b) => (a.c === pid ? -1 : order(a.c)) - (b.c === pid ? -1 : order(b.c)) || a.w.localeCompare(b.w));
     return `<div class="card rgp cps${S.rOpen === key ? ' open' : ''}" data-id="${key}"><div class="cph" data-act="rtog" data-id="${key}">${ico}<span class="grow">${esc(name)}</span><span class="rgn">${list.length}</span>${chev}</div><div class="cpb"><div class="cpbi">${list.map(r => { const c = byId('categories', r.c); return `<div class="cpi" data-act="ruleedit" data-id="${r.i}"><span class="grow"><b>${esc(r.w)}</b><span class="sub">${c && c.parent_id ? esc(c.name) : c ? 'Whole category' : 'Category deleted'}</span></span><span class="sub">›</span></div>`; }).join('')}</div></div></div>`;
   };
-  return `<div class="top"><h1>Rules</h1>${spaceSwitch()}</div><div class="sub" style="margin:-4px 0 14px">A word in the note picks the category right away: “компы” → Gaming.</div>
+  return `<h2 style="margin:26px 0 6px">Rules</h2><div class="sub" style="margin:0 0 12px">A word in the note picks the category right away: “компы” → Gaming.</div>
   ${groups.map(g => sec(g.p.id, `<span class="ico sm">${rootIcon(g.p, 18)}</span>`, g.p.name, g.list, g.p.id)).join('')}${lost.length ? sec('_lost', `<span class="ico sm">${svg('tag', 18)}</span>`, 'No category', lost, '') : ''}
   ${all.length ? '' : '<div class="card"><div class="sub">No rules yet</div></div>'}<button class="btn sec full" data-act="ruleedit" data-id="">+ Rule</button>`;
 }
@@ -854,20 +860,53 @@ async function checkTg() {
   if (why) why.textContent = tgWhy();
 }
 function pgSettings() {
-  if (!S.tgstAt || now() - S.tgstAt > 60000) checkTg();
   const th = tryLS(() => localStorage.getItem('theme')) || 'auto'; const me = S.me || {};
   return `<div class="top"><h1>Settings</h1></div>
   <div class="card"><div class="lbl">Theme</div><div class="seg" style="margin-top:8px;width:max-content">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, n]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-id="${k}">${n}</button>`).join('')}</div></div>
   ${NATIVE ? `<div class="card"><div class="row" style="cursor:default"><div class="grow"><b>Face ID lock</b><span class="sub">Ask for Face ID when the app opens</span></div><div class="sw ${S.lockOn === false ? '' : 'on'}" data-act="lock"></div></div></div>` : ''}
   <div class="card"><div class="lbl">Menu style</div><div class="seg" style="margin-top:8px;width:max-content">${[['glass', 'Liquid Glass'], ['solid', 'Solid']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('navstyle')) || 'glass') === k ? 'on' : ''}" data-act="navstyle" data-id="${k}">${n}</button>`).join('')}</div></div>
   ${NATIVE ? '' : `<div class="card"><div class="lbl">App icon</div><div class="icpick">${[['a', 'Wallet'], ['b', 'Donut'], ['c', 'Growth']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('appicon')) || 'a') === k ? 'on' : ''}" data-act="appicon" data-id="${k}"><img src="/icon-${k}-180.png" alt=""><span>${n}</span></button>`).join('')}</div><div class="sub" style="margin-top:10px">On iPhone the icon is saved when the app is added. To change it: delete the app from the Home Screen, open the site in Safari, then Share → Add to Home Screen.</div></div>`}
+  ${window.PublicKeyCredential && !NATIVE ? `<div class="card"><b>Face ID</b><div class="sub" style="margin:4px 0 10px">${me.pk ? 'Face ID sign-in is on. The password still works.' : 'Sign in with Face ID instead of typing the password. The password stays as a backup.'}</div><div class="err" id="pkerr"></div>${me.pk ? '<button class="btn sec" data-act="pkoff">Turn off Face ID</button>' : '<button class="btn" data-act="pkon">Turn on Face ID</button>'}</div>` : ''}
+  <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
+  <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
+}
+// ---------- личные данные (аватарка в шапке) ----------
+// имя и фамилия — в синхронизируемых настройках пользователя (first_name, last_name), юзернейм = логин (меняется на сервере)
+function pgMe() {
+  const me = S.me || {}; const login = me.login || S.user || '';
+  return `<div class="top"><h1>Personal data</h1></div>
+  <div class="mehead">${avatar('lg')}<b id="mename">${esc(myName() || login)}</b><span class="sub">@${esc(login)}</span></div>
+  <div class="card"><div class="lbl">First name</div><input class="f" id="fn" value="${esc(setting('first_name', ''))}" autocomplete="given-name" placeholder="Doniyor">
+  <div class="lbl">Last name</div><input class="f" id="ln" value="${esc(setting('last_name', ''))}" autocomplete="family-name">
+  <div class="lbl">Username</div><input class="f" id="un" value="${esc(login)}" autocapitalize="none" autocomplete="username" spellcheck="false"><div class="sub" style="margin:-4px 0 10px">Used to sign in: 3–32 letters, digits, dot, dash or underscore.</div>
+  <div class="err" id="meerr"></div><button class="btn full" data-act="mesave">Save</button></div>
+  <div class="card"><div class="row" data-go="/profile/connect"><div class="ico">${svg('plane')}</div><div class="grow"><b>Telegram & Shortcuts</b><span class="sub">Bot, SMS and Wallet import</span></div><span class="sub">›</span></div></div>
+  <div class="card"><b>Reset password</b><div class="sub" style="margin:4px 0 10px">Other devices will be signed out, this one stays signed in.</div><input class="f" type="password" id="pw0" placeholder="Current password" autocomplete="current-password"><input class="f" type="password" id="pw1" placeholder="New password (8+ characters)" autocomplete="new-password"><input class="f" type="password" id="pw2" placeholder="Repeat new password" autocomplete="new-password"><div class="err" id="pwerr"></div><button class="btn" data-act="pwsave">Change password</button></div>
+  `;
+}
+function pgConnect() {
+  if (!S.tgstAt || now() - S.tgstAt > 60000) checkTg();
+  const me = S.me || {};
+  return `<div class="top"><h1>Telegram & Shortcuts</h1></div>
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
   ${me.owner ? '<button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button>' : '<button class="btn" data-act="tgcode">Get code</button>'}<div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div><div class="sub" style="margin-top:10px">Last SMS or Wallet received: ${me.last_in ? (() => { const d = new Date(me.last_in + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1) + ' ' + hm(me.last_in); })() : 'never'}</div>${me.bad_in ? `<div class="sub" style="margin-top:6px;color:#d64545">A request with a wrong URL came on ${(() => { const d = new Date(me.bad_in.at + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1) + ' ' + hm(me.bad_in.at); })()}. The Shortcut has an old URL: paste the one above.</div>` : ''}` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
-  ${window.PublicKeyCredential && !NATIVE ? `<div class="card"><b>Face ID</b><div class="sub" style="margin:4px 0 10px">${me.pk ? 'Face ID sign-in is on. The password still works.' : 'Sign in with Face ID instead of typing the password. The password stays as a backup.'}</div><div class="err" id="pkerr"></div>${me.pk ? '<button class="btn sec" data-act="pkoff">Turn off Face ID</button>' : '<button class="btn" data-act="pkon">Turn on Face ID</button>'}</div>` : ''}
-  <div class="card"><b>Password</b><div class="sub" style="margin:4px 0 10px">Other devices will be signed out, this one stays signed in.</div><input class="f" type="password" id="pw0" placeholder="Current password" autocomplete="current-password"><input class="f" type="password" id="pw1" placeholder="New password (8+ characters)" autocomplete="new-password"><input class="f" type="password" id="pw2" placeholder="Repeat new password" autocomplete="new-password"><div class="err" id="pwerr"></div><button class="btn" data-act="pwsave">Change password</button></div>
-  <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
-  <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
+  `;
+}
+async function saveMe() {
+  const er = document.getElementById('meerr'); er.textContent = '';
+  const fn = document.getElementById('fn').value.trim(), ln = document.getElementById('ln').value.trim(), un = document.getElementById('un').value.trim().toLowerCase();
+  const login = (S.me && S.me.login) || S.user || '';
+  if (un !== login) {
+    if (!/^[a-z0-9._-]{3,32}$/.test(un)) { er.textContent = 'Username: 3–32 latin letters, digits, dot, dash or underscore'; return; }
+    const r = await api('/api/username', { method: 'POST', body: JSON.stringify({ login: un }) }).catch(() => null);
+    if (!r) { er.textContent = 'No connection to the server'; return; }
+    if (!r.ok) { er.textContent = r.data.error === 'taken' ? 'This username is taken' : 'Couldn’t change the username'; return; }
+    S.me = { ...(S.me || {}), login: un }; S.user = un;
+  }
+  if (fn !== setting('first_name', '')) setSetting('first_name', fn);
+  if (ln !== setting('last_name', '')) setSetting('last_name', ln);
+  persist(); haptic('success'); render(true); toast('Saved');
 }
 // ---------- приглашение друга ----------
 const dm = (ts) => { const d = new Date(ts + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1); };
@@ -1095,6 +1134,7 @@ function moveCat(d) {
 
 // ---------- события ----------
 document.addEventListener('click', async (e) => {
+  touchBusy = false; clearTimeout(touchT); // палец уже поднят: перерисовка от нажатия идёт сразу, без ожидания (смена темы и т.п.)
   if (e.target.closest('[data-hdl]')) return;
   const a = e.target.closest('[data-act]'); const g = e.target.closest('[data-go]');
   if (!a && g) { e.preventDefault(); return go(g.dataset.go); }
@@ -1187,9 +1227,10 @@ document.addEventListener('click', async (e) => {
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
     case 'ratekind': setSetting('rate_kind', id); render(true); break;
     case 'raterefresh': { const r = await api('/api/rate?force=1').catch(() => null); if (r && r.ok) { S.rates = r.data; persist(); render(true); toast('Rate updated'); } else toast('Couldn’t update'); break; }
-    case 'theme': tryLS(() => localStorage.setItem('theme', id)); smoothTheme(() => { applyTheme(); render(true); }); break;
+    case 'theme': tryLS(() => localStorage.setItem('theme', id)); haptic('select'); smoothTheme(() => { applyTheme(); render(true); }); break;
     case 'appicon': tryLS(() => localStorage.setItem('appicon', id)); applyTheme(); haptic('select'); render(true); toast('Icon selected. Re-add the app to the Home Screen to see it.'); break;
-    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); applyTheme(); haptic('select'); render(true); break;
+    case 'navstyle': tryLS(() => localStorage.setItem('navstyle', id)); haptic('select'); smoothTheme(() => { applyTheme(); render(true); }); break;
+    case 'mesave': saveMe(); break;
     case 'pwsave': {
       const v = (i) => document.getElementById(i).value; const er = document.getElementById('pwerr'); er.textContent = '';
       if (v('pw1').length < 8) { er.textContent = 'New password must be at least 8 characters'; break; }
@@ -1376,11 +1417,13 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   const off = (j, i) => (j > i ? 1 : -1) * (W() + 16);
   const nbrs = () => { const i = MAIN.indexOf(S.route); if (i < 0) return PAGES()[S.route] ? [MAIN.indexOf('/profile')] : []; return [i - 1, i + 1].filter(j => j >= 0 && j < MAIN.length); };
   const myI = () => MAIN.includes(S.route) ? MAIN.indexOf(S.route) : MAIN.length; // вложенная страница стоит правее Profile
+  const par = (r) => r === '/profile/connect' ? '/profile/me' : '/profile'; // свайп назад со вложенной страницы — на её родителя
+  const tgt = (j) => MAIN.includes(S.route) ? MAIN[j] : par(S.route);
   function dropPre() { Object.values(pre.els).forEach(n => n.remove()); pre.els = {}; pre.key = ''; }
   function prebuild() {
     if (!S.user || ovEl || pgIdx(S.route) < 0) return; const key = S.route + ':' + render.seq; if (pre.key === key) return;
     dropPre(); pre.key = key; const i = myI();
-    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[MAIN[j]](); nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; });
+    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[tgt(j)](); nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; });
   }
   window.swPrebuild = () => { clearTimeout(prebuild._t); prebuild._t = setTimeout(prebuild, 180); };
   const mv = (el, x, tr) => { if (!el) return; el.style.transition = tr ? 'transform ' + tr : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };
@@ -1414,10 +1457,10 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const done = !!s0.nb && flingDone(s0.dx, s0.v || 0, W() * 0.3);
     const cv = springCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0);
     mv(c, done ? sign * (W() + 16) : 0, cv); if (s0.nb) mv(s0.nb, done ? 0 : -sign * (W() + 16), cv);
-    const here = MAIN.includes(S.route) ? S.route : '/profile'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
+    const to = s0.nb ? tgt(s0.j) : ''; const here = MAIN.includes(S.route) ? S.route : '/profile'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
     onTab(done ? MAIN[s0.j] : here); if (done) haptic();
     const fin = () => { clearTimeout(tm); pending = null;
-      if (done) { slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = MAIN[s0.j]; history[back ? 'replaceState' : 'pushState']({}, '', MAIN[s0.j]); S.route = MAIN[s0.j]; window.scrollTo(0, 0); render(); dropPre(); }
+      if (done) { slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = to; history[back ? 'replaceState' : 'pushState']({}, '', to); S.route = to; window.scrollTo(0, 0); render(); dropPre(); }
       else { if (c) { c.style.transition = ''; c.style.transform = ''; c.style.willChange = ''; } Object.values(pre.els).forEach(n => { n.style.visibility = 'hidden'; }); }
     };
     const tm = setTimeout(fin, 310); pending = fin;
@@ -1426,7 +1469,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 })();
 // подсветка нажимаемой области на телефоне: класс .tch на время касания, плавно гаснет после отпускания
 (() => {
-  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx,.icb';
+  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx,.icb,.avab';
   let el = null, x0 = 0, y0 = 0;
   const off = () => { if (el) el.classList.remove('tch'); el = null; };
   document.addEventListener('touchstart', (e) => { off(); const t = e.target.closest && e.target.closest(SEL); if (!t || t.disabled) return; el = t; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; el.classList.add('tch'); }, { passive: true });

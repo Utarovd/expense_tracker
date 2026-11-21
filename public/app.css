@@ -549,3 +549,13 @@ button.catf.none{color:rgba(20,22,28,.3)}:root[data-theme=dark] button.catf.none
 .icb.on:has(.col-slate){background:#eef1f5;color:#64748b;box-shadow:inset 0 0 0 2px #64748b}:root[data-theme=dark] .icb.on:has(.col-slate){background:#262c36;color:#a3adbd;box-shadow:inset 0 0 0 2px #a3adbd}
 /* без масштабирования двойным тапом (быстрые повторные нажатия на «+» увеличивали экран) */
 html{touch-action:manipulation}
+/* аватарка (вместо Personal/Family) и личные данные */
+.avab{border:0;background:none;padding:0;border-radius:50%;cursor:pointer;flex:none;-webkit-tap-highlight-color:transparent;transition:transform .2s cubic-bezier(.32,.72,0,1)}
+.avab:active,.avab.tch{transform:scale(.94)}
+.ava{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;background:var(--grad2);color:var(--onpri);font-weight:700;font-size:16px;letter-spacing:.3px;box-shadow:0 2px 8px rgba(19,38,82,.25),inset 0 1px 0 rgba(255,255,255,.25);flex:none}
+.ava.md{width:52px;height:52px;font-size:19px}
+.ava.lg{width:96px;height:96px;font-size:34px}
+.mecard{display:flex;align-items:center;gap:14px;cursor:pointer}
+.mecard .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mehead{display:flex;flex-direction:column;align-items:center;gap:6px;margin:0 0 18px}
+.mehead b{font-size:22px;margin-top:6px}

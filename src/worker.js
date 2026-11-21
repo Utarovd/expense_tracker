@@ -939,6 +939,14 @@ async function handle(req, env, ctx) {
         await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(await sha(bearer(req) || cookie(req, 'sid'))).run();
         return J({ ok: true }, 200, { 'set-cookie': 'sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' });
       }
+      if (path === '/api/username' && req.method === 'POST') { // смена юзернейма (= логина) со страницы личных данных
+        const login = String((await req.json()).login || '').trim().toLowerCase();
+        if (!/^[a-z0-9._-]{3,32}$/.test(login)) return J({ error: 'bad_login' }, 400);
+        const ex = await env.DB.prepare('SELECT id FROM users WHERE lower(login)=?').bind(login).first();
+        if (ex && ex.id !== uid) return J({ error: 'taken' }, 400);
+        try { await env.DB.prepare('UPDATE users SET login=? WHERE id=?').bind(login, uid).run(); } catch (e) { return J({ error: 'taken' }, 400); }
+        return J({ ok: true, login });
+      }
       if (path === '/api/password' && req.method === 'POST') {
         const b = await req.json(); const u = await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(uid).first();
         if (!u || (await pbkdf2(String(b.current || ''), unb64(u.pass_salt))) !== u.pass_hash) return J({ error: 'wrong_current' }, 400);
