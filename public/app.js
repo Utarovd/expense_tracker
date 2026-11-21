@@ -373,7 +373,7 @@ function quickOne(q, quiet) {
   const tx = makeTx({ type: q.income ? 'income' : 'expense', account: acc, amount: q.amount, category: cat, note: q.note });
   put('transactions', tx);
   if (quiet) return { q, acc };
-  haptic('success'); toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
+  toast(`${q.income ? '+' : '−'}${fmt(q.amount, acc.currency)} · ${acc.name}` + (cat ? '' : ' · tap to pick a category'), cat ? null : () => openTx(tx.id));
 }
 
 // ---------- UI-утилиты ----------
@@ -390,17 +390,19 @@ function haptic(style) {
 }
 // уведомление: карточка сверху под статус-баром, иконка по смыслу (успех / ошибка / инфо / «тапни»), въезжает сверху пружиной.
 // Длинный текст растягивает карточку вширь (до 16 px от краёв), а не в узкий высокий столбик. Ошибка — с вибрацией «ошибка».
-const TOAST_ERR = /^(Enter|Pick|Couldn|Didn|Error|Wrong|Failed|No )/i;
-const TOAST_IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', err: '<path d="M12 7v6"/><path d="M12 17h.01"/>', info: '<path d="M12 11v6"/><path d="M12 7h.01"/>', tap: '<path d="M9 6l6 6-6 6"/>' };
+const TOAST_ERR = /^(Enter|Pick|Couldn|Didn|Error|Wrong|Failed|No |Export needs)/i;
+const TOAST_INFO = /^(Rate updated|Icon selected|Face ID is|Sync)/i;
+const TOAST_IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', err: '<path d="M12 7v6"/><path d="M12 17h.01"/>', del: '<path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M7 7l1 12h8l1-12"/>', info: '<path d="M12 11v6"/><path d="M12 7h.01"/>' };
+// уведомление: цветная карточка с градиентом сверху под часами (успех — зелёная, ошибка — красная, удаление — фиолетовая,
+// Info — тёмно-синяя с жёлтым заголовком, «тапни» — жёлтая со стрелкой). У каждого типа своя вибрация при появлении.
 function toast(msg, onTap, kind) {
-  let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.innerHTML = '<i class="tic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></svg></i><span class="ttx"></span>'; document.body.appendChild(el); }
-  const k = kind || (TOAST_ERR.test(msg) ? 'err' : /^Deleted|^Archived/.test(msg) ? 'info' : 'ok');
-  el.dataset.k = k; el.querySelector('svg').innerHTML = TOAST_IC[k] || TOAST_IC.ok; el.querySelector('.ttx').textContent = msg;
-  el.classList.toggle('act', !!onTap);
-  el.onclick = onTap ? () => { el.classList.remove('on'); onTap(); } : null; el.style.pointerEvents = onTap ? 'auto' : 'none';
-  if (k === 'err') haptic('error');
+  let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.innerHTML = '<i class="tic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></svg></i><span class="ttx"><b class="tth">Info</b><span class="ttm"></span></span>'; document.body.appendChild(el); }
+  const k = onTap ? 'act' : kind || (TOAST_ERR.test(msg) ? 'err' : /^Deleted|^Archived/.test(msg) ? 'del' : TOAST_INFO.test(msg) ? 'info' : 'ok');
+  el.dataset.k = k; el.querySelector('svg').innerHTML = TOAST_IC[k] || TOAST_IC.ok; el.querySelector('.ttm').textContent = msg;
+  el.onclick = onTap ? () => { el.classList.remove('on'); onTap(); } : k === 'info' ? () => el.classList.remove('on') : null; el.style.pointerEvents = el.onclick ? 'auto' : 'none';
+  haptic(/^Saved/.test(msg) ? 'success' : { ok: 'success', err: 'error', del: 'warning' }[k] || 'light');
   el.classList.remove('on'); void el.offsetWidth; requestAnimationFrame(() => el.classList.add('on'));
-  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), onTap ? 5000 : k === 'err' ? 3200 : 2600);
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), onTap || k === 'info' ? 5000 : k === 'err' ? 3200 : 2600);
 }
 let ovEl = null;
 let lockY = null;
@@ -966,13 +968,13 @@ function saveTx() {
     put('transactions', tx);
     // новая заметка с выбранной категорией: предложить запомнить правило (один раз, тапом по подсказке)
     const w = tx.category_id && !F.autoCat ? ruleWord(tx.note) : '';
-    if (w && !ruleCat(tx.note) ) { closeSheet(); haptic('success'); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); haptic('success'); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
+    if (w && !ruleCat(tx.note) ) { closeSheet(); return toast(`Saved · tap to always put “${w}” in ${catLabel(tx.category_id)}`, () => { saveRules(rules().concat([{ w, c: tx.category_id }])); toast(`Rule added: ${w} → ${catLabel(tx.category_id)}`); }); }
   }
-  closeSheet(); haptic('success'); toast('Saved');
+  closeSheet(); toast('Saved');
 }
 function deleteTx() {
   if (F.type === 'transfer') (F.legs || []).forEach(l => del('transactions', l.id)); else del('transactions', F.id);
-  closeSheet(); haptic('warning'); toast('Deleted');
+  closeSheet(); toast('Deleted');
 }
 function openAcc(id) {
   const a = id ? byId('accounts', id) : { type: 'card_uzs', currency: 'UZS', name: '', card_last4: '', opening_balance: 0, hidden: 0, exclude_from_total: 0 };
@@ -1166,7 +1168,7 @@ document.addEventListener('click', async (e) => {
     case 'accnew': openAcc(null); break;
     case 'fflag': F[id] = F[id] ? 0 : 1; a.classList.toggle('on'); break;
     case 'accsave': saveAcc(); break;
-    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); haptic('warning'); toast('Deleted'); } break;
+    case 'accdel': if (await ask('Delete this account?', 'Its transactions stay in history.')) { del('accounts', F.acc); closeSheet(); toast('Deleted'); } break;
     case 'catedit': openCat(id); break;
     case 'catnew': openCat(null, id || null); break;
     case 'ruleedit': openRule(id || ''); break;
@@ -1178,7 +1180,7 @@ document.addEventListener('click', async (e) => {
     case 'icpk': F.ic = id; F.icMan = true; if (!F.colMan) F.col = ICDEF[id] || 'def'; { const h = document.getElementById('ichint'); if (h) h.textContent = ''; } icPaint(); haptic('select'); break;
     case 'clpk': F.col = id; F.colMan = true; icPaint(); haptic('select'); break;
     case 'rtog': { const s = a.closest('.rgp'), was = s.classList.contains('open'); document.querySelectorAll('.rgp.open').forEach(x => { if (x !== s) x.classList.remove('open'); }); s.classList.toggle('open', !was); S.rOpen = was ? '' : id; haptic(); break; }
-    case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); haptic('warning'); toast('Archived'); break;
+    case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); toast('Archived'); break;
     case 'catup': moveCat(-1); break;
     case 'catdown': moveCat(1); break;
     case 'ratemode': setSetting('rate_mode', setting('rate_mode', 'auto') === 'auto' ? 'manual' : 'auto'); render(true); break;
@@ -1194,7 +1196,7 @@ document.addEventListener('click', async (e) => {
       const r = await api('/api/password', { method: 'POST', body: JSON.stringify({ current: v('pw0'), next: v('pw1') }) }).catch(() => null);
       if (!r) { er.textContent = 'No connection to the server'; break; }
       if (!r.ok) { er.textContent = r.data.error === 'wrong_current' ? 'Current password is wrong' : 'Couldn’t change the password'; break; }
-      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic('success'); toast('Password changed'); break;
+      ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); toast('Password changed'); break;
     }
     case 'syncnow': await sync(); toast('Done'); break;
     case 'join': {
