@@ -25,7 +25,16 @@ async function pbkdf2(pw, salt) {
 }
 const getMeta = async (env, k) => (await env.DB.prepare('SELECT v FROM meta WHERE k=?').bind(k).first())?.v ?? null;
 const setMeta = (env, k, v) => env.DB.prepare('INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').bind(k, String(v)).run();
-const touch = (env) => setMeta(env, 'stamp', now());
+// у каждого пользователя своя метка изменений: открытое приложение видит, что пора синхронизироваться
+const touch = (env) => setMeta(env, 'stamp:' + needUid(env), now());
+// ---------- пользователи ----------
+// Данные (счета, операции, категории, лимиты, настройки, правила) принадлежат пользователю: у каждой строки user_id.
+// Запрос работает с «окружением пользователя» forUser(env, uid): все функции ниже берут env.uid и видят только его строки.
+const forUser = (env, uid) => Object.assign(Object.create(env), { uid });
+const needUid = (env) => { if (!env.uid) throw new Error('no user context'); return env.uid; };
+const ownerUid = async (env) => getMeta(env, 'owner_uid');
+// метка для /api/stamp: своя + общая (общую ставят разовые SQL-правки в schema.sql)
+const stampOf = async (env) => `${(await getMeta(env, 'stamp:' + needUid(env))) || 0}.${(await getMeta(env, 'stamp')) || 0}`;
 
 // ---------- сессии ----------
 function cookie(req, name) {
@@ -89,12 +98,13 @@ function upsertStmt(env, table, row, ts) {
   const cols = [...T[table], 'updated_at', 'deleted_at'];
   const vals = cols.map(c => { const v = row[c]; return v === undefined || v === '' ? null : (typeof v === 'object' ? null : v); });
   const sets = cols.filter(c => c !== 'id').map(c => `${c}=excluded.${c}`).join(',');
-  const sql = `INSERT INTO ${table}(${cols.join(',')},synced_at) VALUES(${cols.map(() => '?').join(',')},?) ON CONFLICT(id) DO UPDATE SET ${sets},synced_at=excluded.synced_at WHERE excluded.updated_at > ${table}.updated_at`;
-  return env.DB.prepare(sql).bind(...vals, ts);
+  // user_id ставит только сервер; чужую строку с тем же id перезаписать нельзя
+  const key = table === 'settings' ? 'user_id,id' : 'id';
+  const sql = `INSERT INTO ${table}(${cols.join(',')},user_id,synced_at) VALUES(${cols.map(() => '?').join(',')},?,?) ON CONFLICT(${key}) DO UPDATE SET ${sets},synced_at=excluded.synced_at WHERE excluded.updated_at > ${table}.updated_at AND ${table}.user_id IS excluded.user_id`;
+  return env.DB.prepare(sql).bind(...vals, needUid(env), ts);
 }
 async function sync(env, body) {
-  await migrateCatsV2(env);
-  await migrateCatsV3(env);
+  if (env.uid === await ownerUid(env)) { await migrateCatsV2(env); await migrateCatsV3(env); } // разовые личные переносы Doniyor
   const ts = now();
   const stmts = [];
   for (const t of Object.keys(T)) {
@@ -108,7 +118,7 @@ async function sync(env, body) {
   const since = Number(body.cursor) || 0;
   const out = {}; let cursor = since;
   for (const t of Object.keys(T)) {
-    const { results } = await env.DB.prepare(`SELECT * FROM ${t} WHERE synced_at >= ? ORDER BY synced_at LIMIT 5000`).bind(since).all();
+    const { results } = await env.DB.prepare(`SELECT * FROM ${t} WHERE user_id=? AND synced_at >= ? ORDER BY synced_at LIMIT 5000`).bind(needUid(env), since).all();
     out[t] = results;
     for (const r of results) if (r.synced_at > cursor) cursor = r.synced_at;
   }
@@ -188,7 +198,7 @@ async function getRates(env, force) {
   return cached || { buy: null, sell: null, cbu: null, fetched_at: 0 };
 }
 async function setting(env, k, d) {
-  const r = await env.DB.prepare('SELECT value FROM settings WHERE id=? AND deleted_at IS NULL').bind(k).first();
+  const r = await env.DB.prepare('SELECT value FROM settings WHERE user_id=? AND id=? AND deleted_at IS NULL').bind(needUid(env), k).first();
   return r?.value ?? d;
 }
 async function effRate(env, kind) {
@@ -224,13 +234,13 @@ async function migrateCatsV3(env) {
   const lock = await env.DB.prepare("INSERT INTO meta(k,v) VALUES('cats_v3','run') ON CONFLICT(k) DO NOTHING").run();
   if (!lock.meta?.changes) return;
   try {
-    const c = await env.DB.prepare("SELECT c.* FROM categories c JOIN categories p ON p.id=c.parent_id JOIN spaces s ON s.id=c.space_id WHERE s.kind='personal' AND s.deleted_at IS NULL AND lower(p.name)='family' AND lower(c.name)='nilufar' AND c.deleted_at IS NULL AND c.archived=0 LIMIT 1").first();
+    const c = await env.DB.prepare("SELECT c.* FROM categories c JOIN categories p ON p.id=c.parent_id JOIN spaces s ON s.id=c.space_id WHERE s.user_id='"+needUid(env).replace(/'/g,'')+"' AND s.kind='personal' AND s.deleted_at IS NULL AND lower(p.name)='family' AND lower(c.name)='nilufar' AND c.deleted_at IS NULL AND c.archived=0 LIMIT 1").first();
     if (!c) return setMeta(env, 'cats_v3', 'not found');
     const n = async (sql) => (await env.DB.prepare(sql).bind(c.id).first()).n;
     const tx = await n('SELECT COUNT(*) n FROM transactions WHERE category_id=? AND deleted_at IS NULL');
     const bud = await n('SELECT COUNT(*) n FROM budgets WHERE category_id=? AND deleted_at IS NULL');
-    const shops = await n('SELECT COUNT(*) n FROM merchant_map WHERE category_id=?');
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE id='cat_rules' AND deleted_at IS NULL").first();
+    const shops = await n('SELECT COUNT(*) n FROM merchant_map WHERE category_id=?'); // id категории уникален, значит и пользователь тот же
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE user_id=? AND id='cat_rules' AND deleted_at IS NULL").bind(needUid(env)).first();
     let rules = []; try { rules = JSON.parse(row?.value || '[]') || []; } catch (_) {}
     const words = rules.filter(r => r.c === c.id).length;
     const summary = { tx, bud, shops, words };
@@ -250,7 +260,7 @@ async function migrateCatsV2(env) {
   try { await doMigrateCatsV2(env); } catch (e) { console.log('cats_v2 failed', e); await env.DB.prepare("DELETE FROM meta WHERE k='cats_v2'").run(); }
 }
 async function doMigrateCatsV2(env) {
-  const sp = await env.DB.prepare("SELECT id FROM spaces WHERE kind='personal' AND deleted_at IS NULL ORDER BY sort LIMIT 1").first();
+  const sp = { id: await personalSpace(env) }; if (!sp.id) return setMeta(env, 'cats_v2', 'no personal space');
   if (!sp) return setMeta(env, 'cats_v2', 'no personal space');
   const all = (await env.DB.prepare("SELECT * FROM categories WHERE space_id=? AND kind='expense' AND deleted_at IS NULL").bind(sp.id).all()).results;
   const lc = (x) => String(x || '').trim().toLowerCase();
@@ -299,7 +309,7 @@ async function doMigrateCatsV2(env) {
   let k = 9; all.filter(c => !c.parent_id && !ORDER.includes(c.name) && c !== old.food && !c.archived).forEach(c => set(c, { sort: k++ }));
   for (const c of dirty) { c.updated_at = ts; st.push(upsertStmt(env, 'categories', c, ts)); }
   // правила слов: продукты → Home › Groceries (раньше Family › Groceries); машина вообще → Transport › Car service
-  const row = await env.DB.prepare("SELECT value FROM settings WHERE id='cat_rules' AND deleted_at IS NULL").first();
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE user_id=? AND id='cat_rules' AND deleted_at IS NULL").bind(needUid(env)).first();
   let rules = []; try { rules = JSON.parse(row?.value || '[]') || []; } catch (_) {}
   const groc = sub(R.Home, 'Groceries'), car = sub(R.Transport, 'Car service'); let moved = 0;
   rules.forEach(r => { if (src.famGroc && r.c === src.famGroc.id) { r.c = groc.id; moved++; } else if (r.c === R.Transport.id) { r.c = car.id; moved++; } else if (src.cosm && r.c === src.cosm.id) { r.c = care.id; moved++; } });
@@ -318,7 +328,7 @@ async function seed(env) {
   st.push(insertRow(env, 'spaces', { id: sp.family, name: 'Family', kind: 'family', sort: 1, updated_at: ts }));
   const acc = (space, name, type, cur, last4, sort) => st.push(insertRow(env, 'accounts', { id: rid(), space_id: space, name, type, currency: cur, opening_balance: 0, card_last4: last4, sort, hidden: 0, exclude_from_total: 0, updated_at: ts }));
   acc(sp.personal, 'Cash', 'cash', 'UZS', '', 0);
-  acc(sp.personal, 'UZS card', 'card_uzs', 'UZS', '3153', 1);
+  acc(sp.personal, 'Card', 'card_uzs', 'UZS', '', 1);
   acc(sp.personal, 'Visa', 'card_visa', 'USD', '', 2);
   acc(sp.family, 'Cash', 'cash', 'UZS', '', 0);
   acc(sp.family, 'Card', 'card_uzs', 'UZS', '', 1);
@@ -331,7 +341,6 @@ async function seed(env) {
     SEED_INCOME.forEach(([name, icon], i) =>
       st.push(insertRow(env, 'categories', { id: rid(), space_id: space, parent_id: null, name, kind: 'income', sort: 100 + i, icon, archived: 0, updated_at: ts })));
   }
-  st.push(env.DB.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('cats_v2','new user')"), env.DB.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('cats_v3','new user')")); // новому пользователю личный перенос не нужен
   st.push(insertRow(env, 'settings', { id: 'rate_mode', value: 'auto', updated_at: ts }));
   st.push(insertRow(env, 'settings', { id: 'rate_kind', value: 'buy', updated_at: ts }));
   for (let i = 0; i < st.length; i += 50) await env.DB.batch(st.slice(i, i + 50));
@@ -339,11 +348,11 @@ async function seed(env) {
 
 // ---------- вспомогательное для импорта ----------
 async function personalSpace(env) {
-  return (await env.DB.prepare("SELECT id FROM spaces WHERE kind='personal' AND deleted_at IS NULL ORDER BY sort LIMIT 1").first())?.id;
+  return (await env.DB.prepare("SELECT id FROM spaces WHERE user_id=? AND kind='personal' AND deleted_at IS NULL ORDER BY sort LIMIT 1").bind(needUid(env)).first())?.id;
 }
 async function balances(env, space) {
   const { results } = await env.DB.prepare(`SELECT a.id,a.name,a.currency,a.hidden,a.opening_balance + COALESCE(SUM(CASE t.type WHEN 'income' THEN t.amount WHEN 'expense' THEN -t.amount ELSE t.amount END),0) AS bal
-    FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id AND t.deleted_at IS NULL
+    FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id AND t.user_id=a.user_id AND t.deleted_at IS NULL
     WHERE a.space_id=? AND a.deleted_at IS NULL GROUP BY a.id ORDER BY a.sort`).bind(space).all();
   return results;
 }
@@ -379,7 +388,7 @@ function money(account, amountMinor, rate) {
 const stemOf = (w) => { w = String(w).toLowerCase().replace(/ё/g, 'е'); const m = w.replace(/(ами|ями|ов|ев|ах|ях|ам|ям|ой|ей|ий|ый|ая|ое|ые|ы|и|а|я|е|у|ю|о)$/, ''); return m.length >= 3 ? m : w; };
 const wordsOf = (t) => String(t || '').toLowerCase().replace(/ё/g, 'е').match(/[\p{L}\p{N}'ʻ’]+/gu) || [];
 async function ruleCat(env, space, text, kind) {
-  const row = await env.DB.prepare("SELECT value FROM settings WHERE id='cat_rules' AND deleted_at IS NULL").first(); if (!row) return null;
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE user_id=? AND id='cat_rules' AND deleted_at IS NULL").bind(needUid(env)).first(); if (!row) return null;
   let rules = []; try { rules = JSON.parse(row.value) || []; } catch (_) { return null; }
   const ws = wordsOf(text); if (!ws.length || !rules.length) return null;
   const { results } = await env.DB.prepare('SELECT id, kind FROM categories WHERE space_id=? AND deleted_at IS NULL').bind(space).all(); const ok = new Map(results.map(c => [c.id, c.kind]));
@@ -389,8 +398,8 @@ async function ruleCat(env, space, text, kind) {
 }
 async function findDup(env, accId, type, amount, ts, source) {
   const any = source === 'payme'; // скрин Payme может относиться к любой карте: ищем по всем счетам
-  const { results } = await env.DB.prepare(`SELECT id,source,occurred_at,merchant FROM transactions WHERE (account_id=? OR ?) AND type=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?`)
-    .bind(accId, any ? 1 : 0, type, amount, ts - 15 * 60000, ts + 15 * 60000).all();
+  const { results } = await env.DB.prepare(`SELECT id,source,occurred_at,merchant FROM transactions WHERE user_id=? AND (account_id=? OR ?) AND type=? AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?`)
+    .bind(needUid(env), accId, any ? 1 : 0, type, amount, ts - 15 * 60000, ts + 15 * 60000).all();
   return results.find(r => r.source !== source || Math.abs(r.occurred_at - ts) < 60000) || null;
 }
 
@@ -434,7 +443,7 @@ async function ingest(env, ev) {
   if (!acc) return { text: 'No accounts.' };
   const ts = ev.ts || now();
   if (ev.ext) {
-    const ex = await env.DB.prepare('SELECT id FROM transactions WHERE source=? AND external_id=?').bind(ev.src, ev.ext).first();
+    const ex = await env.DB.prepare('SELECT id FROM transactions WHERE user_id=? AND source=? AND external_id=?').bind(needUid(env), ev.src, ev.ext).first();
     if (ex) return { dup: true, text: 'duplicate' };
   }
   const dup = ev.noDup ? null : await findDup(env, acc.id, ev.type, ev.amount, ts, ev.src);
@@ -499,7 +508,7 @@ async function ingest(env, ev) {
     return { text: notice + await qoldiq(env, space, acc, ev), txId, noCat: true };
   }
   const mm = money(acc, ev.amount, rate);
-  const mapped = ev.merchant ? ((await env.DB.prepare('SELECT category_id FROM merchant_map WHERE merchant=?').bind(norm(ev.merchant)).first())?.category_id || await ruleCat(env, space, ev.merchant, ev.type === 'income' ? 'income' : 'expense')) : null;
+  const mapped = ev.merchant ? ((await env.DB.prepare('SELECT category_id FROM merchant_map WHERE user_id=? AND merchant=?').bind(needUid(env), norm(ev.merchant)).first())?.category_id || await ruleCat(env, space, ev.merchant, ev.type === 'income' ? 'income' : 'expense')) : null;
   stmts.push(insertRow(env, 'transactions', { id: txId, space_id: space, type: ev.type, account_id: acc.id, amount: ev.amount, ...mm, category_id: mapped || null, note: ev.note || '', merchant: ev.merchant || '', occurred_at: ts, source: ev.src === 'sms' ? 'sms' : ev.src, external_id: ev.ext || null }));
   await env.DB.batch(stmts); await touch(env);
   const gapR = sms && ev.balance != null && acc.currency === 'UZS' ? await reconcileGap(env, space, acc, ev) : {};
@@ -552,7 +561,7 @@ const tg = async (env, method, body) => {
   const r = await fetch(`https://api.telegram.org/bot${env.TG_TOKEN}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   return r.json().catch(() => null);
 };
-async function chats(env) { return (await env.DB.prepare('SELECT chat_id FROM telegram_links').all()).results.map(r => r.chat_id); }
+async function chats(env) { return (await env.DB.prepare('SELECT chat_id FROM telegram_links WHERE user_id=?').bind(needUid(env)).all()).results.map(r => r.chat_id); }
 async function catKeyboard(env, space, kind, txId, parentId) {
   const { results } = await env.DB.prepare('SELECT id,name,icon,parent_id FROM categories WHERE space_id=? AND kind=? AND deleted_at IS NULL AND archived=0 ORDER BY sort').bind(space, kind).all();
   const rows = [];
@@ -620,21 +629,24 @@ async function aiReadScreenshot(env, bytes, mime) {
   const j = s.match(/\{[\s\S]*\}/);
   return j ? JSON.parse(j[0]) : null;
 }
-async function tgHandle(env, update) {
-  if (update.callback_query) return tgCallback(env, update.callback_query);
-  const msg = update.message; if (!msg) return;
-  const chat = String(msg.chat.id); const text = (msg.text || '').trim();
-  const linked = await env.DB.prepare('SELECT * FROM telegram_links WHERE chat_id=?').bind(chat).first();
+async function tgHandle(env0, update) {
+  const cq = update.callback_query;
+  const msg = update.message; if (!msg && !cq) return;
+  const chat = String(cq ? cq.message.chat.id : msg.chat.id); const text = ((msg && msg.text) || '').trim();
+  const linked = await env0.DB.prepare('SELECT * FROM telegram_links WHERE chat_id=?').bind(chat).first();
+  if (cq) return linked ? tgCallback(forUser(env0, linked.user_id), cq) : tg(env0, 'answerCallbackQuery', { callback_query_id: cq.id });
+  let env = env0;
   if (!linked) {
     const code = (text.match(/^\/start\s+(\d{6})$/) || text.match(/^(\d{6})$/) || [])[1];
-    const saved = JSON.parse((await getMeta(env, 'tglink')) || 'null');
-    if (code && saved && saved.code === code && saved.exp > now()) {
+    const saved = code ? JSON.parse((await getMeta(env, 'tglink:' + code)) || 'null') : null;
+    if (saved && saved.exp > now()) {
       await env.DB.prepare('INSERT OR REPLACE INTO telegram_links(chat_id,user_id,username,linked_at) VALUES(?,?,?,?)').bind(chat, saved.user_id, msg.from?.username || '', now()).run();
-      await setMeta(env, 'tglink', 'null');
+      await env.DB.prepare('DELETE FROM meta WHERE k=?').bind('tglink:' + code).run();
       return tgSend(env, chat, '✅ Linked. Send expenses like “netflix 15$” or “lunch 58000”. For a Payme payment, just send the screenshot. /balance, /budget, /help');
     }
     return tgSend(env, chat, 'Link the bot: in the app go to Profile → Settings → Telegram, get a one-time code and send it here.');
   }
+  env = forUser(env0, linked.user_id);
   const space = await personalSpace(env);
   if (/^\/(help|start)/.test(text)) return tgSend(env, chat, 'Text: “taxi 25000”, “netflix 15$”, “+500000 salary” (plus = income), you can add “cash” / “card” / “visa”.\nPayme payment screenshot: I’ll read it and record it.\n/balance: balances. /budget: monthly budget.');
   if (/^\/balance/.test(text)) {
@@ -685,7 +697,7 @@ async function sameMerchantUncategorized(env, tx) {
 async function tgCallback(env, cq) {
   const [act, txId, id, gapArg] = (cq.data || '').split(':');
   const chat = cq.message.chat.id; const mid = cq.message.message_id;
-  const tx = await env.DB.prepare('SELECT * FROM transactions WHERE id=?').bind(txId).first();
+  const tx = await env.DB.prepare('SELECT * FROM transactions WHERE id=? AND user_id=?').bind(txId, needUid(env)).first(); // только свои операции
   await tg(env, 'answerCallbackQuery', { callback_query_id: cq.id });
   if (!tx) return;
   if (act === 'p' || act === 'b') {
@@ -695,7 +707,7 @@ async function tgCallback(env, cq) {
   }
   if (act === 'k') return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n❓')[0] + '\n— kept as an expense' });
   if (act === 'f') {
-    const acc = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND deleted_at IS NULL').bind(id).first();
+    const acc = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND user_id=? AND deleted_at IS NULL').bind(id, needUid(env)).first();
     const gap = parseInt(gapArg, 10);
     const okType = gap > 0 ? 'expense' : 'income';
     if (!acc || !gap || tx.type !== okType) return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n❓')[0] + '\n— already handled' });
@@ -716,7 +728,7 @@ async function tgCallback(env, cq) {
     return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n❓')[0] + `\n🔁 Transfer recorded, fee ${fmtMoney(fee, 'UZS')} saved as an expense` });
   }
   if (act === 'x') {
-    const to = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND deleted_at IS NULL').bind(id).first();
+    const to = await env.DB.prepare('SELECT * FROM accounts WHERE id=? AND user_id=? AND deleted_at IS NULL').bind(id, needUid(env)).first();
     if (!to || tx.type !== 'expense') return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: (cq.message.text || '').split('\n\n')[0] + '\n— already a transfer or changed' });
     const from = await env.DB.prepare('SELECT * FROM accounts WHERE id=?').bind(tx.account_id).first();
     const g = rid(), t = now();
@@ -729,16 +741,17 @@ async function tgCallback(env, cq) {
   if (act === 'y') {
     const others = await sameMerchantUncategorized(env, tx);
     const t = now();
+    const okCat = await env.DB.prepare('SELECT id FROM categories WHERE id=? AND user_id=?').bind(id, needUid(env)).first(); if (!okCat) return;
     for (const o of others) await env.DB.prepare('UPDATE transactions SET category_id=?, updated_at=?, synced_at=? WHERE id=? AND category_id IS NULL').bind(id, t, t, o.id).run();
     if (others.length) await touch(env);
     return tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: `✓ Category set for ${others.length} other from ${tx.merchant}` });
   }
   if (act === 'c') {
-    const c = await env.DB.prepare('SELECT c.name, p.name AS pn FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE c.id=?').bind(id).first();
+    const c = await env.DB.prepare('SELECT c.name, p.name AS pn FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE c.id=? AND c.user_id=?').bind(id, needUid(env)).first();
     if (!c) return;
     const t = now();
     await env.DB.prepare('UPDATE transactions SET category_id=?, updated_at=?, synced_at=? WHERE id=?').bind(id, t, t, txId).run();
-    if (tx.merchant) await env.DB.prepare('INSERT INTO merchant_map(merchant,category_id,updated_at) VALUES(?,?,?) ON CONFLICT(merchant) DO UPDATE SET category_id=excluded.category_id, updated_at=excluded.updated_at').bind(norm(tx.merchant), id, t).run();
+    if (tx.merchant) await env.DB.prepare('INSERT INTO merchant_map(user_id,merchant,category_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id,merchant) DO UPDATE SET category_id=excluded.category_id, updated_at=excluded.updated_at').bind(needUid(env), norm(tx.merchant), id, t).run();
     await touch(env);
     const base = (cq.message.text || '').replace(/\n\n(Куда отнести|Which category)\?$/, '').replace(/\n📂 .*/, '');
     const done = await tg(env, 'editMessageText', { chat_id: chat, message_id: mid, text: base + `\n📂 ${(c.pn ? c.pn + ' › ' : '') + c.name} ✓`, reply_markup: { inline_keyboard: [[{ text: '✏ Change category', callback_data: 'b:' + txId + ':' + (tx.type === 'income' ? 'income' : 'expense') }]] } });
@@ -766,7 +779,7 @@ async function readBody(req) {
 async function webhook(req, env) {
   const { raw, obj } = await readBody(req);
   let res;
-  await setMeta(env, 'last_in', now());
+  await setMeta(env, 'last_in:' + needUid(env), now());
   const sms = (obj && (obj.sms || obj.text || obj.message || obj.body)) || (obj && obj.amount !== undefined ? null : raw);
   if (obj && obj.amount !== undefined && !obj.sms) {
     // Apple Wallet: {amount, merchant, card, currency?}
@@ -783,12 +796,16 @@ async function webhook(req, env) {
     if (p) res = await ingest(env, { src: 'sms', ...p });
     else { res = { text: '⚠ Couldn’t parse the SMS:\n' + String(sms).slice(0, 300) }; }
   } else res = { text: '' };
-  await env.DB.prepare('INSERT INTO import_log(source,raw,result,at) VALUES(?,?,?,?)').bind(obj?.amount !== undefined ? 'wallet' : 'sms', raw.slice(0, 1000), ((res.dup ? res.text : res.text || '') + (res.gapAsk ? ' ❓ ' + res.gapAsk.q : '')).slice(0, 600), now()).run();
+  await env.DB.prepare('INSERT INTO import_log(source,raw,result,at,user_id) VALUES(?,?,?,?,?)').bind(obj?.amount !== undefined ? 'wallet' : 'sms', raw.slice(0, 1000), ((res.dup ? res.text : res.text || '') + (res.gapAsk ? ' ❓ ' + res.gapAsk.q : '')).slice(0, 600), now(), needUid(env)).run();
   if (res.text && !res.dup) await notify(env, res);
   return J({ ok: true, result: res.dup ? res.text : 'recorded' });
 }
 
 // ---------- роутер ----------
+async function remindAll(env) {
+  const { results } = await env.DB.prepare('SELECT DISTINCT user_id FROM telegram_links WHERE user_id IS NOT NULL').all();
+  for (const r of results) { try { await uncategorizedReminder(forUser(env, r.user_id)); } catch (e) { console.log('remind failed', r.user_id, String(e)); } }
+}
 async function uncategorizedReminder(env) {
   const space = await personalSpace(env); if (!space) return;
   const { results } = await env.DB.prepare("SELECT t.*, a.name AS acc FROM transactions t LEFT JOIN accounts a ON a.id=t.account_id WHERE t.space_id=? AND t.type IN ('expense','income') AND t.category_id IS NULL AND t.deleted_at IS NULL ORDER BY t.occurred_at DESC LIMIT 200").bind(space).all();
@@ -800,7 +817,7 @@ async function uncategorizedReminder(env) {
 }
 
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(uncategorizedReminder(env)); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(remindAll(env)); },
   async fetch(req, env, ctx) {
     const origin = req.headers.get('origin') || '';
     if (!NATIVE_ORIGINS.includes(origin) || !new URL(req.url).pathname.startsWith('/api/')) return handle(req, env, ctx);
@@ -812,14 +829,31 @@ export default {
   },
 };
 
+const INVITE_TTL = 7 * 86400000;
+async function inviteRow(env, code) {
+  code = String(code || ''); if (!/^[A-Za-z0-9_-]{10,40}$/.test(code)) return null;
+  return env.DB.prepare('SELECT * FROM invites WHERE code_hash=? AND used_at IS NULL AND exp>?').bind(await sha(code), now()).first();
+}
+async function newSession(env, req, uid) {
+  const native = req.headers.get('x-client') === 'native';
+  const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
+  await env.DB.prepare('INSERT INTO sessions(id,user_id,exp) VALUES(?,?,?)').bind(await sha(tok), uid, now() + (native ? NATIVE_SESSION : 12 * 3600000)).run();
+  return J({ ok: true, ...(native ? { token: tok } : {}) }, 200, { 'set-cookie': `sid=${tok}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=43200` });
+}
 async function handle(req, env, ctx) {
     const url = new URL(req.url); const path = url.pathname;
     if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
     try {
-      // публичные: вебхуки
-      if (path.startsWith('/api/in/') && path !== '/api/in/' + env.WEBHOOK_SECRET) { await setMeta(env, 'bad_in', JSON.stringify({ at: now(), host: url.hostname, head: path.slice(8, 12) })); return J({ error: 'bad_url' }, 404); }
-      if (path === '/api/in/' + env.WEBHOOK_SECRET && env.WEBHOOK_SECRET && req.method === 'GET') return J({ ok: true, last_received: Number(await getMeta(env, 'last_in')) || null });
-      if (path === '/api/in/' + env.WEBHOOK_SECRET && env.WEBHOOK_SECRET && req.method === 'POST') return await webhook(req, env);
+      // публичные: вебхуки. Адрес Doniyor (WEBHOOK_SECRET) не меняется; у остальных свой ключ users.hook_key
+      if (path.startsWith('/api/in/')) {
+        const key = path.slice(8);
+        const hu = key && env.WEBHOOK_SECRET && key === env.WEBHOOK_SECRET ? await ownerUid(env) : (key.length >= 24 ? (await env.DB.prepare('SELECT id FROM users WHERE hook_key=?').bind(key).first())?.id : null);
+        if (!hu) { await setMeta(env, 'bad_in', JSON.stringify({ at: now(), host: url.hostname, head: path.slice(8, 12) })); return J({ error: 'bad_url' }, 404); }
+        const ue = forUser(env, hu);
+        if (req.method === 'GET') return J({ ok: true, last_received: Number(await getMeta(env, 'last_in:' + hu)) || null });
+        if (req.method === 'POST') return await webhook(req, ue);
+        return J({ error: 'method' }, 405);
+      }
       if (path === '/api/tg' && req.method === 'POST') {
         if (!env.TG_SECRET || req.headers.get('x-telegram-bot-api-secret-token') !== env.TG_SECRET) return J({ error: 'forbidden' }, 403);
         const upd = await req.json();
@@ -831,14 +865,43 @@ async function handle(req, env, ctx) {
         const has = await env.DB.prepare('SELECT COUNT(*) c FROM users').first();
         if (has.c > 0) return J({ error: 'already' }, 400);
         if (!env.SETUP_KEY || b.key !== env.SETUP_KEY || !b.login || String(b.password || '').length < 8) return J({ error: 'bad' }, 400);
-        const salt = crypto.getRandomValues(new Uint8Array(16));
-        await env.DB.prepare('INSERT INTO users(id,login,pass_hash,pass_salt,created_at) VALUES(?,?,?,?,?)').bind(rid(), b.login, await pbkdf2(b.password, salt), b64(salt), now()).run();
-        await seed(env); await touch(env);
+        const salt = crypto.getRandomValues(new Uint8Array(16)); const id = rid();
+        await env.DB.prepare("INSERT INTO users(id,login,pass_hash,pass_salt,created_at,role) VALUES(?,?,?,?,?,'owner')").bind(id, b.login, await pbkdf2(b.password, salt), b64(salt), now()).run();
+        await setMeta(env, 'owner_uid', id);
+        await seed(forUser(env, id)); await touch(forUser(env, id));
         return J({ ok: true });
+      }
+      // приглашение: проверить ссылку (страница /join/<код>)
+      if (path === '/api/invite/check' && req.method === 'POST') {
+        const inv = await inviteRow(env, (await req.json()).code);
+        if (!inv) return J({ ok: false });
+        const by = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(inv.created_by).first();
+        return J({ ok: true, by: by?.login || '', exp: inv.exp });
+      }
+      // регистрация по приглашению: свой логин и пароль, свои данные с нуля
+      if (path === '/api/signup' && req.method === 'POST') {
+        const b = await req.json();
+        const inv = await inviteRow(env, b.code);
+        if (!inv) return J({ error: 'bad_invite' }, 400);
+        const login = String(b.login || '').trim().toLowerCase();
+        if (!/^[a-z0-9._-]{3,32}$/.test(login)) return J({ error: 'bad_login' }, 400);
+        if (String(b.password || '').length < 8) return J({ error: 'too_short' }, 400);
+        if (await env.DB.prepare('SELECT id FROM users WHERE lower(login)=?').bind(login).first()) return J({ error: 'taken' }, 400);
+        const t = now();
+        const used = await env.DB.prepare('UPDATE invites SET used_at=? WHERE code_hash=? AND used_at IS NULL AND exp>?').bind(t, inv.code_hash, t).run();
+        if (!used.meta?.changes) return J({ error: 'bad_invite' }, 400);
+        const salt = crypto.getRandomValues(new Uint8Array(16)); const id = rid();
+        try {
+          await env.DB.prepare("INSERT INTO users(id,login,pass_hash,pass_salt,created_at,role,hook_key,invited_by) VALUES(?,?,?,?,?,'user',?,?)").bind(id, login, await pbkdf2(String(b.password), salt), b64(salt), t, hex(crypto.getRandomValues(new Uint8Array(16))), inv.created_by).run();
+        } catch (e) { await env.DB.prepare('UPDATE invites SET used_at=NULL WHERE code_hash=?').bind(inv.code_hash).run(); return J({ error: 'taken' }, 400); }
+        await env.DB.prepare('UPDATE invites SET used_by=? WHERE code_hash=?').bind(id, inv.code_hash).run();
+        const ue = forUser(env, id); await seed(ue); await touch(ue);
+        await env.DB.prepare('INSERT INTO login_log(login,ok,ip,at) VALUES(?,?,?,?)').bind('signup:' + login, 1, req.headers.get('cf-connecting-ip') || '', t).run();
+        return newSession(env, req, id);
       }
       if (path === '/api/login' && req.method === 'POST') {
         const b = await req.json(); const ip = req.headers.get('cf-connecting-ip') || '';
-        const u = await env.DB.prepare('SELECT * FROM users WHERE login=?').bind(String(b.login || '')).first();
+        const u = await env.DB.prepare('SELECT * FROM users WHERE lower(login)=lower(?)').bind(String(b.login || '').trim()).first();
         if (u && u.locked_until > now()) return J({ error: 'locked', until: u.locked_until }, 429);
         const ok = u && (await pbkdf2(String(b.password || ''), unb64(u.pass_salt))) === u.pass_hash;
         await env.DB.prepare('INSERT INTO login_log(login,ok,ip,at) VALUES(?,?,?,?)').bind(String(b.login || ''), ok ? 1 : 0, ip, now()).run();
@@ -870,6 +933,8 @@ async function handle(req, env, ctx) {
       }
       const uid = await authed(req, env);
       if (!uid) return J({ error: 'auth' }, 401);
+      env = forUser(env, uid); // дальше всё только в данных этого пользователя
+      const isOwner = uid === await ownerUid(env);
       if (path === '/api/logout') {
         await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(await sha(bearer(req) || cookie(req, 'sid'))).run();
         return J({ ok: true }, 200, { 'set-cookie': 'sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' });
@@ -901,36 +966,51 @@ async function handle(req, env, ctx) {
       }
       if (path === '/api/me') {
         const u = await env.DB.prepare('SELECT login FROM users WHERE id=?').bind(uid).first();
-        const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();
+        const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links WHERE user_id=?').bind(uid).first();
         const pk = await env.DB.prepare('SELECT COUNT(*) c FROM passkeys WHERE user_id=?').bind(uid).first();
-        return J({ login: u.login, pk: pk.c, last_in: Number(await getMeta(env, 'last_in')) || null, bad_in: JSON.parse((await getMeta(env, 'bad_in')) || 'null'), hook_url: env.WEBHOOK_SECRET ? url.origin + '/api/in/' + env.WEBHOOK_SECRET : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await getMeta(env, 'stamp') });
+        const hk = isOwner ? env.WEBHOOK_SECRET : (await env.DB.prepare('SELECT hook_key FROM users WHERE id=?').bind(uid).first())?.hook_key;
+        return J({ login: u.login, owner: isOwner, pk: pk.c, last_in: Number(await getMeta(env, 'last_in:' + uid)) || null, bad_in: isOwner ? JSON.parse((await getMeta(env, 'bad_in')) || 'null') : null, hook_url: hk ? url.origin + '/api/in/' + hk : null, tg_ready: !!env.TG_TOKEN, tg_linked: links.c, stamp: await stampOf(env) });
       }
-      if (path === '/api/stamp') return J({ stamp: await getMeta(env, 'stamp') });
+      if (path === '/api/stamp') return J({ stamp: await stampOf(env) });
       if (path === '/api/sync' && req.method === 'POST') return J(await sync(env, await req.json()));
       if (path === '/api/icon' && req.method === 'POST') return J({ icon: await aiIcon(env, String((await req.json()).name || '').slice(0, 60)) });
       if (path === '/api/rate') return J({ ...(await getRates(env, url.searchParams.get('force') === '1')) });
       if (path === '/api/tg/code' && req.method === 'POST') {
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        await setMeta(env, 'tglink', JSON.stringify({ code, exp: now() + 10 * 60000, user_id: uid }));
+        const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+        await env.DB.prepare("DELETE FROM meta WHERE k LIKE 'tglink:%' AND CAST(json_extract(v,'$.exp') AS INTEGER) < ?").bind(now()).run();
+        await setMeta(env, 'tglink:' + code, JSON.stringify({ exp: now() + 10 * 60000, user_id: uid }));
         return J({ code });
       }
       if (path === '/api/tg/status') {
         if (!env.TG_TOKEN) return J({ ok: false, reason: 'no_token' });
         const w = await tg(env, 'getWebhookInfo', {}).catch(() => null); const i = w?.result || {};
-        const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links').first();
+        const links = await env.DB.prepare('SELECT COUNT(*) c FROM telegram_links WHERE user_id=?').bind(uid).first();
         const hook = !!i.url && /\/api\/tg$/.test(i.url);
         const recentErr = i.last_error_date && (now() / 1000 - i.last_error_date) < 3600;
         const ok = hook && !recentErr && links.c > 0;
         return J({ ok, reason: !w?.ok ? 'tg_unreachable' : !hook ? 'no_webhook' : recentErr ? 'error' : !links.c ? 'not_linked' : '', error: recentErr ? i.last_error_message : '' });
       }
       if (path === '/api/tg/setup' && req.method === 'POST') {
+        if (!isOwner) return J({ error: 'owner_only' }, 403); // вебхук бота общий, его ставит только владелец
         if (!env.TG_TOKEN || !env.TG_SECRET) return J({ error: 'no_token' }, 400);
         const r = await tg(env, 'setWebhook', { url: url.origin + '/api/tg', secret_token: env.TG_SECRET, allowed_updates: ['message', 'callback_query'] });
         const me = await tg(env, 'getMe', {});
         return J({ ok: r?.ok, bot: me?.result?.username, desc: r?.description });
       }
       if (path === '/api/tg/remind' && req.method === 'POST') { await uncategorizedReminder(env); return J({ ok: true }); }
-      if (path === '/api/import-log') return J((await env.DB.prepare('SELECT * FROM import_log ORDER BY id DESC LIMIT 30').all()).results);
+      if (path === '/api/import-log') return J((await env.DB.prepare('SELECT * FROM import_log WHERE user_id=? ORDER BY id DESC LIMIT 30').bind(uid).all()).results);
+      // приглашения друзей (пока только владелец): одноразовая ссылка на 7 дней
+      if (path === '/api/invites' && req.method === 'POST') {
+        if (!isOwner) return J({ error: 'owner_only' }, 403);
+        const code = b64u(crypto.getRandomValues(new Uint8Array(12))); const t = now();
+        await env.DB.prepare('INSERT INTO invites(code_hash,created_by,created_at,exp) VALUES(?,?,?,?)').bind(await sha(code), uid, t, t + INVITE_TTL).run();
+        return J({ code, url: url.origin + '/join/' + code, exp: t + INVITE_TTL });
+      }
+      if (path === '/api/invites') {
+        if (!isOwner) return J({ error: 'owner_only' }, 403);
+        const { results } = await env.DB.prepare('SELECT i.created_at, i.exp, i.used_at, u.login FROM invites i LEFT JOIN users u ON u.id=i.used_by WHERE i.created_by=? ORDER BY i.created_at DESC LIMIT 50').bind(uid).all();
+        return J({ invites: results.map(r => ({ created_at: r.created_at, exp: r.exp, used_at: r.used_at, login: r.login || null })) });
+      }
       return J({ error: 'not_found' }, 404);
     } catch (e) {
       console.log('error', path, String(e && e.stack || e));

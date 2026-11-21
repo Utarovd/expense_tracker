@@ -243,6 +243,7 @@ const IC = {
   chart: 'M20.5 13A8.5 8.5 0 1 1 11 3.5V13zM14.5 3.6a8.5 8.5 0 0 1 5.9 5.9h-5.9z',
   card: 'M4.5 5h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM2.5 10h19M6.5 15h4',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5a7.5 7.5 0 0 1 15 0',
+  invite: 'M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6',
   target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM12 12h.01',
   grid: 'M5 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM15 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM5 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM15 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
   rate: 'M7 20V4M3.5 7.5 7 4l3.5 3.5M17 4v16M13.5 16.5 17 20l3.5-3.5',
@@ -431,7 +432,7 @@ function ask(title, msg, okLabel = 'Delete') {
 // ---------- роутинг ----------
 const MAIN = ['/', '/history', '/stats', '/profile'];
 let slideDir = '';
-const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rules': pgRules, '/profile/rate': pgRate, '/profile/settings': pgSettings });
+const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/rules': pgRules, '/profile/rate': pgRate, '/profile/settings': pgSettings, '/profile/invite': pgInvite });
 // порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
 // старые адреса (до 20.11: /more, /accounts …) ведут на новые /profile/… — закладки и PWA продолжают работать
 const OLDP = { '/transactions': '/history', '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings' };
@@ -464,6 +465,7 @@ const touchOff = () => { clearTimeout(touchT); touchT = setTimeout(() => { touch
 document.addEventListener('touchend', touchOff, { passive: true, capture: true }); document.addEventListener('touchcancel', touchOff, { passive: true, capture: true });
 function render(soft) {
   if (soft && touchBusy) { render._q = true; return; }
+  if (S.route.startsWith('/join/')) return renderJoin(); // приглашение друга: страница регистрации
   if (!S.user) { if (S.route !== '/login') { S.route = '/login'; history.replaceState({}, '', '/login'); } return renderLogin(); }
   if (S.route === '/login') { S.route = '/'; history.replaceState({}, '', '/'); }
   const r = S.route;
@@ -723,7 +725,7 @@ function pgAccounts() {
   <div style="display:flex;gap:10px"><button class="btn sec full" data-act="accnew">+ Account</button><button class="btn full" data-act="addtransfer">Transfer</button></div>`;
 }
 function pgMore() {
-  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rules', 'tag', 'Rules'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings, Telegram']];
+  const l = [['/profile/accounts', 'card', 'Accounts'], ['/profile/budget', 'target', 'Budget & limits'], ['/profile/categories', 'grid', 'Categories'], ['/profile/rules', 'tag', 'Rules'], ['/profile/rate', 'rate', 'USD rate'], ['/profile/settings', 'sliders', 'Settings, Telegram'], ...(S.me && S.me.owner ? [['/profile/invite', 'invite', 'Invite friends']] : [])];
   return `<div class="top"><h1>Profile</h1></div><div class="card">${l.map(([p, i, n]) => `<div class="row" data-go="${p}"><div class="ico">${svg(i)}</div><div class="grow"><b>${n}</b></div><span class="sub">›</span></div>`).join('')}</div><div class="stat" id="sbadge">${syncText()}</div>`;
 }
 function pgBudget() {
@@ -857,12 +859,39 @@ function pgSettings() {
   <div class="card"><div class="lbl">Menu style</div><div class="seg" style="margin-top:8px;width:max-content">${[['glass', 'Liquid Glass'], ['solid', 'Solid']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('navstyle')) || 'glass') === k ? 'on' : ''}" data-act="navstyle" data-id="${k}">${n}</button>`).join('')}</div></div>
   ${NATIVE ? '' : `<div class="card"><div class="lbl">App icon</div><div class="icpick">${[['a', 'Wallet'], ['b', 'Donut'], ['c', 'Growth']].map(([k, n]) => `<button class="${(tryLS(() => localStorage.getItem('appicon')) || 'a') === k ? 'on' : ''}" data-act="appicon" data-id="${k}"><img src="/icon-${k}-180.png" alt=""><span>${n}</span></button>`).join('')}</div><div class="sub" style="margin-top:10px">On iPhone the icon is saved when the app is added. To change it: delete the app from the Home Screen, open the site in Safari, then Share → Add to Home Screen.</div></div>`}
   <div class="card"><b>Telegram bot <span id="tgst" class="tgst on">${tgBadge()}</span></b><div class="sub" style="margin:4px 0 10px">${me.tg_ready ? (me.tg_linked ? `Linked chats: ${me.tg_linked}` : 'Not linked yet') : 'Bot token is not set on the server'}<span id="tgwhy">${tgWhy()}</span></div>
-  <button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button><div id="tgout" class="sub" style="margin-top:10px"></div></div>
+  ${me.owner ? '<button class="btn sec" data-act="tgsetup">1. Connect webhook</button> <button class="btn" data-act="tgcode">2. Get code</button>' : '<button class="btn" data-act="tgcode">Get code</button>'}<div id="tgout" class="sub" style="margin-top:10px"></div></div>
   <div class="card"><b>URL for Shortcuts (SMS and Wallet)</b><div class="sub" style="margin:4px 0 8px">Secret. Don’t share it.</div>${me.hook_url ? `<code id="hook">${esc(me.hook_url)}</code><div style="margin-top:10px"><button class="btn sec" data-act="copyhook">Copy</button></div><div class="sub" style="margin-top:10px">Last SMS or Wallet received: ${me.last_in ? (() => { const d = new Date(me.last_in + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1) + ' ' + hm(me.last_in); })() : 'never'}</div>${me.bad_in ? `<div class="sub" style="margin-top:6px;color:#d64545">A request with a wrong URL came on ${(() => { const d = new Date(me.bad_in.at + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1) + ' ' + hm(me.bad_in.at); })()}. The Shortcut has an old URL: paste the one above.</div>` : ''}` : '<div class="sub">Not set (WEBHOOK_SECRET)</div>'}</div>
   ${window.PublicKeyCredential && !NATIVE ? `<div class="card"><b>Face ID</b><div class="sub" style="margin:4px 0 10px">${me.pk ? 'Face ID sign-in is on. The password still works.' : 'Sign in with Face ID instead of typing the password. The password stays as a backup.'}</div><div class="err" id="pkerr"></div>${me.pk ? '<button class="btn sec" data-act="pkoff">Turn off Face ID</button>' : '<button class="btn" data-act="pkon">Turn on Face ID</button>'}</div>` : ''}
   <div class="card"><b>Password</b><div class="sub" style="margin:4px 0 10px">Other devices will be signed out, this one stays signed in.</div><input class="f" type="password" id="pw0" placeholder="Current password" autocomplete="current-password"><input class="f" type="password" id="pw1" placeholder="New password (8+ characters)" autocomplete="new-password"><input class="f" type="password" id="pw2" placeholder="Repeat new password" autocomplete="new-password"><div class="err" id="pwerr"></div><button class="btn" data-act="pwsave">Change password</button></div>
   <div class="card"><b>Data</b><div class="sub" id="sbadge" style="margin:4px 0 10px">${syncText()}</div><button class="btn sec" data-act="syncnow">Sync now</button> <button class="btn sec" data-act="csv">Export CSV</button></div>
   <button class="btn red full" data-act="logout">Log out</button><div class="stat">${esc(me.login || '')}</div>`;
+}
+// ---------- приглашение друга ----------
+const dm = (ts) => { const d = new Date(ts + TZ); const p = n => String(n).padStart(2, '0'); return p(d.getUTCDate()) + '.' + p(d.getUTCMonth() + 1); };
+async function loadInvites() {
+  const r = await api('/api/invites').catch(() => null);
+  S.inv = { ...(S.inv || {}), list: r && r.ok ? r.data.invites : [] }; if (S.route === '/profile/invite') render(true);
+}
+function pgInvite() {
+  const iv = S.inv || {}; if (!iv.list && !iv.loading) { S.inv = { ...iv, loading: 1 }; loadInvites(); }
+  const list = (iv.list || []);
+  const joined = list.filter(x => x.login), open = list.filter(x => !x.login && x.exp > now());
+  return `<div class="top"><h1>Invite friends</h1></div>
+  <div class="card"><b>Invite link</b><div class="sub" style="margin:4px 0 10px">Each link works once and for 7 days. Your friend picks a login and password and starts with an empty budget. Your data stays private.</div>
+  ${iv.link ? `<code id="invlink" style="display:block;word-break:break-all">${esc(iv.link)}</code><div style="display:flex;gap:10px;margin-top:10px"><button class="btn sec full" data-act="invcopy">Copy</button><button class="btn full" data-act="invshare">Share</button></div><button class="btn sec full" data-act="invnew" style="margin-top:10px">New link</button>` : `<button class="btn full" data-act="invnew">Create invite link</button>`}</div>
+  <div class="card"><div class="lbl">Friends</div>${joined.length ? joined.map(x => `<div class="row" style="cursor:default"><div class="ico">${svg('user')}</div><div class="grow"><b>${esc(x.login)}</b><span class="sub">joined ${dm(x.used_at)}</span></div></div>`).join('') : `<div class="sub" style="margin-top:6px">${iv.list ? 'No one has joined yet' : 'Loading…'}</div>`}
+  ${open.length ? `<div class="sub" style="margin-top:10px">Unused links: ${open.length} (until ${open.map(x => dm(x.exp)).join(', ')})</div>` : ''}</div>`;
+}
+function renderJoin() {
+  const code = S.route.slice(6);
+  if (!S.joinChk || S.joinChk.code !== code) { S.joinChk = { code }; api('/api/invite/check', { method: 'POST', body: JSON.stringify({ code }) }).then(r => { S.joinChk = { code, ok: !!(r.ok && r.data.ok), by: r.data.by || '' }; if (S.route.startsWith('/join/')) render(); }).catch(() => { S.joinChk = { code, ok: null }; render(); }); }
+  const c = S.joinChk; const fs = 'style="background:var(--card)"';
+  let body;
+  if (S.user) body = `<div class="sub" style="margin-bottom:16px">You are signed in as <b>${esc(S.user)}</b>. Log out on this device to create a new account.</div><button class="btn full" data-act="joinout">Log out</button><button class="btn sec full" style="margin-top:10px" data-go="/">Back to my budget</button>`;
+  else if (c.ok === undefined) body = '<div class="sub">Checking the invite…</div>';
+  else if (c.ok === false) body = `<div class="sub" style="margin-bottom:16px">This invite link is used or expired. Ask for a new one.</div><button class="btn sec full" data-go="/login">Sign in</button>`;
+  else body = `<div class="sub" style="margin-bottom:20px">${c.by ? esc(c.by) + ' invited you. ' : ''}Create your account</div><input class="f" ${fs} id="jl" placeholder="Login" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username"><input class="f" ${fs} id="jp1" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><input class="f" ${fs} id="jp2" type="password" placeholder="Repeat password" autocomplete="new-password"><div class="err" id="jerr"></div><button class="btn full" data-act="join">Create account</button><button class="btn sec full" style="margin-top:10px" data-go="/login">I have an account</button>`;
+  $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1>${body}</div>`;
 }
 function renderLogin() {
   $app.innerHTML = `<div class="center pg"><h1 style="margin:0 0 4px">Budget</h1><div class="sub" style="margin-bottom:20px">Sign in</div><input class="f" style="background:var(--card)" id="lg" placeholder="Login" autocapitalize="none" autocomplete="username"><input class="f" style="background:var(--card)" id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="lgerr"></div>${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential && !NATIVE ? '<button class="btn full" data-act="pklogin" style="margin-bottom:10px">Sign in with Face ID</button>' : ''}<button class="btn ${tryLS(() => localStorage.getItem('pk')) === '1' && window.PublicKeyCredential && !NATIVE ? 'sec ' : ''}full" data-act="login">Sign in</button></div>`;
@@ -1073,6 +1102,7 @@ document.addEventListener('click', async (e) => {
       if (!r) return er.textContent = 'No connection to the server';
       if (!r.ok) return er.textContent = r.data.error === 'locked' ? 'Too many attempts, wait 15 minutes' : 'Wrong login or password';
       if (NATIVE && r.data.token) tryLS(() => localStorage.setItem('ntok', r.data.token));
+      { const was = (S.me && S.me.login) || ''; if (was && was.toLowerCase() !== document.getElementById('lg').value.trim().toLowerCase()) await clearLocal(); }
       S.user = document.getElementById('lg').value.trim(); S.route = '/'; history.replaceState({}, '', '/'); await boot(!NATIVE); break; }
     case 'pkon': {
       const er = document.getElementById('pkerr');
@@ -1167,6 +1197,24 @@ document.addEventListener('click', async (e) => {
       ['pw0', 'pw1', 'pw2'].forEach(i => { document.getElementById(i).value = ''; }); haptic('success'); toast('Password changed'); break;
     }
     case 'syncnow': await sync(); toast('Done'); break;
+    case 'join': {
+      const v = (x) => (document.getElementById(x) || {}).value || ''; const er = document.getElementById('jerr');
+      if (v('jp1').length < 8) return er.textContent = 'Password: 8 characters or more';
+      if (v('jp1') !== v('jp2')) return er.textContent = 'Passwords don’t match';
+      a.disabled = true;
+      const r = await api('/api/signup', { method: 'POST', body: JSON.stringify({ code: S.route.slice(6), login: v('jl').trim(), password: v('jp1') }) }).catch(() => null);
+      a.disabled = false;
+      if (!r) return er.textContent = 'No connection to the server';
+      if (!r.ok) return er.textContent = ({ bad_invite: 'This invite link is used or expired. Ask for a new one.', bad_login: 'Login: 3-32 Latin letters, digits, dot, dash or _', taken: 'This login is taken, try another', too_short: 'Password: 8 characters or more' })[r.data.error] || 'Something went wrong';
+      if (NATIVE && r.data.token) tryLS(() => localStorage.setItem('ntok', r.data.token));
+      await clearLocal(); S.user = v('jl').trim().toLowerCase(); S.route = '/'; history.replaceState({}, '', '/'); await boot(true); toast('Welcome! Your account is ready'); break; }
+    case 'joinout': await api('/api/logout', { method: 'POST' }).catch(() => 0); tryLS(() => localStorage.removeItem('ntok')); { const r = S.route; await logoutLocal(); S.route = r; history.replaceState({}, '', r); render(); } break;
+    case 'invnew': {
+      a.disabled = true; const r = await api('/api/invites', { method: 'POST' }).catch(() => null); a.disabled = false;
+      if (!r || !r.ok) { toast('Couldn’t create the link'); break; }
+      S.inv = { ...(S.inv || {}), link: r.data.url, list: null }; render(true); loadInvites(); break; }
+    case 'invcopy': tryLS(() => navigator.clipboard.writeText(S.inv.link)); toast('Copied'); break;
+    case 'invshare': if (navigator.share) navigator.share({ title: 'Budget', text: 'Join me in the Budget app:', url: S.inv.link }).catch(() => 0); else { tryLS(() => navigator.clipboard.writeText(S.inv.link)); toast('Copied'); } break;
     case 'copyhook': tryLS(() => navigator.clipboard.writeText(S.me.hook_url)); toast('Copied'); break;
     case 'tgsetup': { const r = await api('/api/tg/setup', { method: 'POST' }).catch(() => null); document.getElementById('tgout').textContent = r && r.data.ok ? 'Webhook connected: @' + r.data.bot : 'Error: ' + (r ? (r.data.desc || r.data.error) : 'no connection'); checkTg(); break; }
     case 'tgcode': { const r = await api('/api/tg/code', { method: 'POST' }).catch(() => null); document.getElementById('tgout').innerHTML = r && r.ok ? `Send this code to the bot (10 minutes): <b style="font-size:22px">${r.data.code}</b>` : 'Error'; break; }
@@ -1266,6 +1314,7 @@ if (NATIVE) {
   window.addEventListener('budgetopenurl', () => takeNativeUrl());
   document.addEventListener('visibilitychange', () => { if (document.hidden) pushWidget(); });
 }
+async function clearLocal() { TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; }); S.cursor = 0; S.space = null; S.me = null; await idb.clear(); }
 async function logoutLocal() { S.user = null; TABLES.forEach(t => { S.db[t] = {}; S.queue[t] = {}; }); S.cursor = 0; S.space = null; S.me = null; await idb.clear(); closeSheet(); render(); }
 
 // ---------- старт ----------

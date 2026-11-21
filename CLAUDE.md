@@ -13,10 +13,11 @@
 ## Устройство
 - `src/worker.js`: весь бэкенд (вход, /api/sync, курс Ipak Yuli, вебхук /api/in/<WEBHOOK_SECRET>, Telegram /api/tg).
 - `public/`: SPA (app.js, app.css), service worker sw.js, manifest. Без внешних CDN и шрифтов, без color-mix().
-- `schema.sql`: D1. Синхронизируемые таблицы: spaces, accounts, categories, transactions, budgets, settings (поля updated_at, deleted_at, synced_at; побеждает более новый updated_at).
+- D1: структура в `migrations/` (`wrangler d1 migrations apply`), `schema.sql` = разовые правки данных (после миграций), `db/after.sql` = страховка user_id. Синхронизируемые таблицы: spaces, accounts, categories, transactions, budgets, settings (поля updated_at, deleted_at, synced_at; побеждает более новый updated_at).
+- Несколько пользователей (с 21.11): у каждой строки данных есть user_id, сервер работает через forUser(env, uid) и видит только строки этого пользователя. Владелец = Doniyor (meta owner_uid, users.role='owner'). Друзья приходят по одноразовой ссылке /join/<код> (Profile › Invite friends, 7 дней). Вебхук: адрес Doniyor = WEBHOOK_SECRET, у остальных users.hook_key. Бот общий, привязка по коду у каждого своя. Разовые SQL-правки для Doniyor: user_id=(SELECT v FROM meta WHERE k='owner_uid').
 - Деньги: целые числа в минимальных единицах (сум ×100, центы). Перевод = две операции с общим transfer_group_id, суммы со знаком.
 - Секреты Worker: SETUP_KEY (разовое создание пользователя), WEBHOOK_SECRET, TG_TOKEN, TG_SECRET.
-- Локально: `.dev.vars` (в .gitignore), `npx wrangler d1 execute expense-tracker --local --file=schema.sql`, `npx wrangler dev --local --port 8787`.
+- Локально: `.dev.vars` (в .gitignore), `npx wrangler d1 migrations apply expense-tracker --local`, затем `--file=schema.sql`, `npx wrangler dev --local --port 8787`.
 - Оставлять запасной адрес *.workers.dev для .uz-доменов.
 
 ## Грабли
