@@ -138,7 +138,7 @@ const catLabel = (id) => { const c = byId('categories', id); if (!c) return '—
 // В поле показывается «Раздел › Подкатегория». Шторка закрывается свайпом вниз, когда список не прокручен.
 function catField(key, val, kind) { return `<button type="button" class="f catf${val ? '' : ' none'}" data-act="catpick" data-cf="${key}" data-kind="${kind}">${val ? esc(catLabel(val)) : 'No category'}</button>`; }
 function setCatField(btn, id) { btn.textContent = id ? catLabel(id) : 'No category'; btn.classList.toggle('none', !id); }
-function openCatPicker(btn) {
+function openCatPicker(btn, onPick, allLabel) {
   const key = btn.dataset.cf, kinds = btn.dataset.kind ? [btn.dataset.kind] : ['expense', 'income'], cur = F[key] || '';
   const ck = (id) => id === cur ? '<span class="cpk">✓</span>' : '';
   const sec = (p, k) => {
@@ -149,7 +149,7 @@ function openCatPicker(btn) {
   };
   const body = kinds.map(k => cats(k).filter(c => !c.parent_id && !c.archived).map(p => sec(p, k)).join('')).join('');
   const el = document.createElement('div'); el.className = 'cp';
-  el.innerHTML = `<div class="cpp"><i class="grab"></i><h2>Category</h2><div class="cpl">${key === 'category' ? `<div class="cpi cp0${cur ? '' : ' sel'}" data-cid="">No category${cur ? '' : '<span class="cpk">✓</span>'}</div>` : ''}${body}</div></div>`;
+  el.innerHTML = `<div class="cpp"><i class="grab"></i><h2>Category</h2><div class="cpl">${key === 'category' || allLabel ? `<div class="cpi cp0${cur ? '' : ' sel'}" data-cid="">${allLabel || 'No category'}${cur ? '' : '<span class="cpk">✓</span>'}</div>` : ''}${body}</div></div>`;
   document.body.appendChild(el); void el.offsetWidth; el.classList.add('on');
   const pp = el.querySelector('.cpp'), list = el.querySelector('.cpl');
   let gone = false;
@@ -174,6 +174,7 @@ function openCatPicker(btn) {
       return;
     }
     const r = e.target.closest('[data-cid]'); if (!r) { if (e.target === el) close(); return; }
+    if (onPick) { onPick(r.dataset.cid); haptic('select'); close(); return; }
     F[key] = r.dataset.cid; if (key === 'category') F.autoCat = false; setCatField(btn, F[key]); haptic('select'); close();
     // новая операция: после выбора категории сразу открывается клавиатура в Note (фокус в том же тапе, иначе iOS не покажет клавиатуру)
     if (key === 'category' && !F.id) { const n = sheetEl() && sheetEl().querySelector('[data-f=note]'); if (n) { n.dataset.center = '1'; n.focus({ preventScroll: true }); } }
@@ -314,10 +315,10 @@ const icSvg = (k, c, sz) => svg(k, sz).replace('class="i ', `class="i ${c && c !
 const rootIcon = (r, sz) => r && parseIc(r.icon) ? icSvg(parseIc(r.icon).k, parseIc(r.icon).c, sz) : !r ? svg('tag', sz) : CATIC[String(r.name).toLowerCase()] ? svg(CATIC[String(r.name).toLowerCase()], sz) : r.icon ? `<span class="emo">${esc(r.icon)}</span>` : svg('tag', sz);
 const accIcon = (a) => svg(a.type === 'cash' ? 'cash' : a.type === 'card_visa' ? 'globe' : 'card');
 const catIcon = (id) => rootIcon(rootOf(id));
-function spentByRoot(m, space = S.space, rng) {
+function spentByRoot(m, space = S.space, rng, type = 'expense') {
   const [a, b] = rng || monthRange(m); const out = {}; let total = 0;
   for (const t of rows('transactions')) {
-    if (t.space_id !== space || t.type !== 'expense' || t.occurred_at < a || t.occurred_at >= b) continue;
+    if (t.space_id !== space || t.type !== type || t.occurred_at < a || t.occurred_at >= b) continue;
     const r = rootOf(t.category_id); const k = r ? r.id : '_none';
     out[k] = (out[k] || 0) + t.amount_base; total += t.amount_base;
   }
@@ -436,12 +437,13 @@ function ask(title, msg, okLabel = 'Delete') {
 // ---------- роутинг ----------
 const MAIN = ['/', '/history', '/stats', '/profile'];
 let slideDir = '';
-const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/profile/me': pgMe, '/profile/connect': pgConnect, '/profile/rate': pgRate, '/profile/settings': pgSettings, '/profile/invite': pgInvite });
+const PAGES = () => ({ '/': pgHome, '/history': pgTrans, '/stats': pgStats, '/profile/accounts': pgAccounts, '/profile': pgMore, '/profile/budget': pgBudget, '/profile/categories': pgCats, '/stats/cat': pgCatD, '/profile/me': pgMe, '/profile/connect': pgConnect, '/profile/rate': pgRate, '/profile/settings': pgSettings, '/profile/invite': pgInvite });
 // порядок страниц для направления сдвига: вложенные страницы Profile стоят «правее» самого Profile
 // старые адреса (до 20.11: /more, /accounts …) ведут на новые /profile/… — закладки и PWA продолжают работать
 const OLDP = { '/transactions': '/history', '/more': '/profile', '/accounts': '/profile/accounts', '/budget': '/profile/budget', '/categories': '/profile/categories', '/rate': '/profile/rate', '/settings': '/profile/settings', '/profile/rules': '/profile/categories' };
 const curPath = () => { const p = location.pathname.replace(/\/+$/, '') || '/'; const n = OLDP[p]; if (n) { history.replaceState({}, '', n + location.search); return n; } return p; };
-const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.length - 0.5 : -1;
+const mainOf = (p) => MAIN.includes(p) ? p : String(p).startsWith('/stats') ? '/stats' : '/profile'; // вкладка, к которой относится вложенная страница
+const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.indexOf(mainOf(p)) + 0.5 : -1;
 const dirTo = (a, b) => { const x = pgIdx(a), y = pgIdx(b); return x > -1 && y > -1 && x !== y ? (y > x ? 'pg-next' : 'pg-prev') : ''; };
 function go(path, replace) { slideDir = dirTo(S.route, path); if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
 window.addEventListener('popstate', () => { const np = curPath(); slideDir = dirTo(S.route, np); closeSheet(); S.route = curPath(); render(); });
@@ -474,7 +476,7 @@ function render(soft) {
   if (S.route === '/login') { S.route = '/'; history.replaceState({}, '', '/'); }
   const r = S.route;
   const fn = PAGES()[r] || pgHome;
-  const main = MAIN.includes(r) ? r : '/profile';
+  const main = mainOf(r);
   const scroll = soft ? window.scrollY : 0;
   const focus = document.activeElement && document.activeElement.id;
   const keep = soft && document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#app');
@@ -569,7 +571,7 @@ function setPill(b, anim) {
 }
 const onTab = (path) => { const hs = document.querySelectorAll('.navhi a'); document.querySelectorAll('.nav a[data-go]').forEach((a, n) => { const on = a.dataset.go === path; a.classList.toggle('on', on); if (hs[n]) hs[n].classList.toggle('on', on); }); };
 function placePill() {
-  const main = MAIN.includes(S.route) ? S.route : '/profile'; const b = tabBox(main); if (!b) return;
+  const main = mainOf(S.route); const b = tabBox(main); if (!b) return;
   if (S.pill && Math.abs(S.pill.x - b.x) > 1) { setPill(S.pill, false); requestAnimationFrame(() => requestAnimationFrame(() => setPill(b, true))); } else setPill(b, false);
   S.pill = b;
 }
@@ -603,6 +605,29 @@ function txRow(t, merged) {
 
 // ---------- страницы ----------
 const uncatList = () => rows('transactions').filter(t => t.space_id === S.space && (t.type === 'expense' || t.type === 'income') && !t.category_id);
+
+// Stats › подкатегория (или весь раздел): итог месяца, столбики за 6 месяцев, операции. Свайп назад — в Stats.
+function pgCatD() {
+  const c = S.catD && byId('categories', S.catD); if (!c) { setTimeout(() => go('/stats', true), 0); return '<div class="top"><h1>Stats</h1></div>'; }
+  const fam = new Set(c.parent_id ? [c.id] : catFamily(c.id)); const kind = c.kind === 'income' ? 'income' : 'expense';
+  const [a, b] = monthRange(curMonth()); const list = rows('transactions').filter(t => t.space_id === S.space && t.type === kind && fam.has(t.category_id) && t.occurred_at >= a && t.occurred_at < b).sort((x, y) => y.occurred_at - x.occurred_at);
+  const days = {}; list.forEach(t => { const k = dayLabel(t.occurred_at); (days[k] = days[k] || []).push(t); });
+  const root = rootOf(c.id);
+  return `<div class="top"><div class="grow"><a class="cdback" data-go="/stats">‹ Stats</a><h1 style="margin:2px 0 0">${esc(c.parent_id ? c.name : c.name)}</h1></div><span class="ico">${rootIcon(root)}</span></div>
+  <div class="sub" style="margin:-8px 0 12px">${c.parent_id ? esc(catLabel(c.id)) : 'All subcategories'}</div>${mnav()}${catSummary(c, fam, list)}
+  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card txcard">${days[k].map(t => txRow(t, true)).join('')}</div>`).join('') || `<div class="card"><div class="sub">No payments this month</div></div>`}`;
+}
+function catSummary(c, fam, list) {
+  const m = curMonth(), kind = c.kind === 'income' ? 'income' : 'expense', inc = kind === 'income';
+  const sumM = (x) => { const [a, b] = monthRange(x); let v = 0; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === kind && fam.has(t.category_id) && t.occurred_at >= a && t.occurred_at < b) v += t.amount_base; }); return v; };
+  const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(m, -i)); const vals = ms.map(x => ({ m: x, v: sumM(x) }));
+  const tot = vals[5].v, prev = vals[4].v, n = list.filter(t => t.type === kind).length; const dp = prev ? Math.round((tot - prev) / prev * 100) : null;
+  const col = colOf({ c: rootOf(c.id) }, 0); const mx = Math.max(1, ...vals.map(v => v.v)); const H = 100, top = 22; const avg = vals.reduce((x, v) => x + v.v, 0) / 6; const ay = top + H - avg / mx * H;
+  const bars = vals.map((v, i) => { const he = v.v / mx * H; const cur = v.m === m; return `<g data-act="trendh" data-id="${v.m}" style="cursor:pointer"><rect x="${i * 50}" y="0" width="50" height="${top + H + 24}" fill="transparent"/><rect x="${i * 50 + 11}" y="${top + H - he}" width="28" height="${he}" rx="5" fill="${col}" opacity="${cur ? 1 : .35}"/><text x="${i * 50 + 25}" y="${top + H - he - 6}" text-anchor="middle" class="tv${cur ? ' on' : ''}">${v.v ? shortAmt(v.v, 'UZS', 1) : ''}</text><text x="${i * 50 + 25}" y="${top + H + 17}" text-anchor="middle" class="tm${cur ? ' on' : ''}">${MSH(v.m)}</text></g>`; }).join('');
+  const good = inc ? dp > 0 : dp < 0;
+  return `<div class="card" style="text-align:center"><div class="lbl">${inc ? 'Earned' : 'Spent'} in ${monthName(m).split(' ')[0]}</div><div class="big ${inc ? 'pos' : 'neg'}">${fmt(tot, 'UZS')}</div><div class="sub">${n} ${inc ? 'payments in' : 'payments'}${n ? ' · average ' + fmt(Math.round(tot / n / 100) * 100, 'UZS') : ''}${dp !== null ? ` · <b style="color:${good ? 'var(--grn)' : 'var(--red)'}">${dp > 0 ? '+' : ''}${dp}%</b> vs last month` : ''}</div></div>
+  <div class="card"><div class="lbl">By month</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%">${bars}${avg ? `<line x1="0" x2="300" y1="${ay}" y2="${ay}" stroke="var(--mut)" stroke-dasharray="4 4" stroke-width="1"/>` : ''}</svg><div class="tleg">Average ${shortAmt(avg, 'UZS', 1)} / month · tap a month to see its payments</div></div>`;
+}
 
 // ---------- Home: лимиты, пустые состояния, анимация баланса ----------
 function limitsCard(m, sp) {
@@ -650,15 +675,16 @@ function pgHome() {
 }
 function pgTrans() {
   const [a, b] = monthRange(curMonth()); const q = S.q.toLowerCase();
-  const list = rows('transactions').filter(t => t.space_id === S.space && (S.uncat ? (t.type !== 'transfer' && !t.category_id) : (t.occurred_at >= a && t.occurred_at < b)) && (!S.accF || t.account_id === S.accF) &&
+  const cf = S.catF && byId('categories', S.catF) ? byId('categories', S.catF) : null; const fam = cf ? new Set(cf.parent_id ? [cf.id] : catFamily(cf.id)) : null;
+  const list = rows('transactions').filter(t => t.space_id === S.space && (S.uncat ? (t.type !== 'transfer' && !t.category_id) : (t.occurred_at >= a && t.occurred_at < b)) && (!S.accF || t.account_id === S.accF) && (!fam || fam.has(t.category_id)) &&
     (!q || (t.note + ' ' + t.merchant + ' ' + catPath(t.category_id)).toLowerCase().includes(q))).sort((x, y) => y.occurred_at - x.occurred_at);
   const days = {}; (S.accF ? list : oneTransfer(list)).forEach(t => { const k = dayLabel(t.occurred_at); (days[k] = days[k] || []).push(t); });
   const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount_base, 0), inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount_base, 0);
   return `<div class="top"><h1>History</h1>${spaceSwitch()}</div>${mnav()}
-  <div class="card" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>
-  <input id="srch" class="f" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
-  <div class="chips"><button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
-  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card" style="padding:4px 16px">${days[k].map(t => txRow(t, !S.accF)).join('')}</div>`).join('') || `<div class="card">${emptyState()}</div>`}`;
+  ${cf ? `<div class="card hsum" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">${esc(cf.name)}</div><b class="${cf.kind === 'income' ? 'pos' : 'neg'}">${fmt(list.filter(t => t.type !== 'transfer').reduce((x, t) => x + t.amount_base, 0), 'UZS')}</b></div><div><div class="lbl">Payments</div><b>${list.length}</b></div></div>` : `<div class="card hsum" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>`}
+  <input id="srch" class="f hsrch" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
+  <div class="chips">${cf ? `<button class="chip on cfchip" data-act="catf"><span class="lic">${catIcon(cf.id)}</span>${esc(cf.name)}<span class="cfx" data-act="catclr" aria-label="Clear">✕</span></button>` : `<button class="chip cfchip" data-act="catf">${svg('grid', 16)}Category</button>`}<button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+  ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card txcard">${days[k].map(t => txRow(t, !S.accF)).join('')}</div>`).join('') || `<div class="card">${emptyState()}</div>`}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
@@ -688,9 +714,10 @@ function shortAmt(minor, disp, rate) {
   const a = Math.abs(v); const s = a >= 1e9 ? (a / 1e9).toFixed(1) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(a / 1e3) + 'k' : String(Math.round(a));
   return (disp === 'USD' ? '$' : '') + s.replace('.0', '');
 }
-function trendChart(m, disp, rate) {
+function trendChart(m, disp, rate, T = 'expense') {
   const ms = []; for (let i = 5; i >= 0; i--) ms.push(shiftMonth(m, -i));
   const vals = ms.map(x => { const [a, b] = monthRange(x); let e = 0, inc = 0; rows('transactions').forEach(t => { if (t.space_id === S.space && t.occurred_at >= a && t.occurred_at < b) { if (t.type === 'expense') e += t.amount_base; else if (t.type === 'income') inc += t.amount_base; } }); return { m: x, e, inc }; });
+  if (T === 'income') vals.forEach(v => { v.e = v.inc; });
   const mx = Math.max(1, ...vals.map(v => v.e)); const H = 100, top = 22;
   const bars = vals.map((v, i) => { const he = v.e / mx * H; const cur = v.m === m;
     return `<g data-act="trendm" data-id="${v.m}" style="cursor:pointer"><rect x="${i * 50}" y="0" width="50" height="${top + H + 24}" fill="transparent"/>
@@ -698,33 +725,37 @@ function trendChart(m, disp, rate) {
     <text x="${i * 50 + 25}" y="${top + H - he - 6}" text-anchor="middle" class="tv${cur ? ' on' : ''}">${v.e ? shortAmt(v.e, disp, rate) : ''}</text>
     <text x="${i * 50 + 25}" y="${top + H + 17}" text-anchor="middle" class="tm${cur ? ' on' : ''}">${MSH(v.m)}</text></g>`; }).join('');
   const avg = vals.reduce((x, v) => x + v.e, 0) / 6;
-  return `<div class="card"><div class="lbl">Expenses · last 6 months</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%"><defs><linearGradient id="gexp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6b6b"/><stop offset="1" stop-color="#c81e3a"/></linearGradient></defs>${bars}</svg><div class="tleg">Average ${shortAmt(avg, disp, rate)} / month · tap a month to open it</div></div>`;
+  const inc = T === 'income';
+  return `<div class="card"><div class="lbl">${inc ? 'Income' : 'Expenses'} · last 6 months</div><svg class="trend" viewBox="0 0 300 ${top + H + 24}" width="100%"><defs><linearGradient id="gexp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${inc ? '#34d399' : '#ff6b6b'}"/><stop offset="1" stop-color="${inc ? '#05875f' : '#c81e3a'}"/></linearGradient></defs>${bars}</svg><div class="tleg">Average ${shortAmt(avg, disp, rate)} / month · tap a month to open it</div></div>`;
 }
 function pgStats() {
-  const m = curMonth(); const per = S.per || '1M'; const rng = perRange(m, per); const sp = spentByRoot(m, S.space, rng); const disp = S.dispCur || 'UZS'; const rate = curRate();
+  const m = curMonth(); const per = S.per || '1M'; const rng = perRange(m, per); const T = S.statT === 'income' ? 'income' : 'expense'; const sp = spentByRoot(m, S.space, rng, T); const disp = S.dispCur || 'UZS'; const rate = curRate();
   const conv = (v) => disp === 'USD' ? v / rate : v; const f = (v) => disp === 'USD' ? fmt(Math.round(conv(v)), 'USD') : fmt(v, 'UZS');
   const items = Object.entries(sp.out).map(([id, v]) => ({ id, v, c: byId('categories', id) })).sort((a, b) => b.v - a.v);
   let acc = 0; const R = 70, C = 2 * Math.PI * R; const [a0, b0] = rng;
   const pct = (v) => Math.round(v / sp.total * 100);
   const donut = sp.total ? `<div class="donut"><svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg)">${items.map((it, i) => { const len = it.v / sp.total * C; const gap = items.length > 1 ? 1.5 : 0; const s = `<circle data-act="slice" data-id="${it.id}" class="sl" r="${R}" cx="100" cy="100" fill="none" stroke="${colOf(it, i)}" stroke-width="34" stroke-dasharray="${Math.max(0.1, len - gap)} ${C - len + gap}" stroke-dashoffset="${-acc}"/>`; acc += len; return s; }).join('')}</svg>
     <div class="dc" data-for="">${(() => { const t = f(sp.total), u = disp === 'USD' ? '' : ' UZS'; const n = u && t.endsWith(u) ? t.slice(0, -u.length) : t; return `<b class="dct${n.length > 9 ? ' sm' : ''}">${n}</b><span>${u ? 'UZS · total' : 'total'}</span>`; })()}</div>${items.map((it, i) => `<div class="dc" data-for="${it.id}"><b style="color:${colOf(it, i)}">${pct(it.v)}%</b><span>${it.c ? esc(it.c.name) : 'No category'}</span></div>`).join('')}</div>` : '';
-  const det = {}; if (sp.total) items.forEach((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? byId('categories', t.category_id).name : 'General'; subs[k] = (subs[k] || 0) + t.amount_base; } });
-      det[it.id] = `<div class="sdet" data-for="${it.id}"><div class="sdin">${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="sdr"><span>${esc(k)}</span><span>${f(v)}</span></div>`).join('')}</div></div>`; });
-  const donutOr = donut || '<div class="sub">No expenses</div>';
+  // подкатегории раскрытого раздела: нажатие открывает History с фильтром по этой подкатегории (и графиком по месяцам)
+  const chv = '<svg class="sdc" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  const det = {}; if (sp.total) items.forEach((it, i) => { const subs = {}; rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === T && t.occurred_at >= a0 && t.occurred_at < b0 && (rootOf(t.category_id) ? rootOf(t.category_id).id : '_none') === it.id) { const k = t.category_id && t.category_id !== it.id ? t.category_id : '_gen'; subs[k] = (subs[k] || 0) + t.amount_base; } });
+      const open = it.id !== '_none';
+      det[it.id] = `<div class="sdet" data-for="${it.id}"><div class="sdin">${Object.entries(subs).sort((x, y) => y[1] - x[1]).map(([k, v]) => k === '_gen' || !byId('categories', k) ? `<div class="sdr"><span>General</span><span>${f(v)}</span><i class="sdc0"></i></div>` : `<div class="sdr go" data-act="catgo" data-id="${k}"><span>${esc(byId('categories', k).name)}</span><span>${f(v)}</span>${chv}</div>`).join('')}${open ? `<div class="sdr go sdall" data-act="catgo" data-id="${it.id}"><span>All in ${esc(it.c ? it.c.name : '')}</span><span></span>${chv}</div>` : ''}</div></div>`; });
+  const donutOr = donut || `<div class="sub">${T === 'income' ? 'No income' : 'No expenses'}</div>`;
   // столбцы по дням
   const [a, b] = monthRange(m); const nd = Math.round((b - a) / 86400000); const days = Array(nd).fill(0);
-  rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === 'expense' && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
+  rows('transactions').forEach(t => { if (t.space_id === S.space && t.type === T && t.occurred_at >= a && t.occurred_at < b) days[Math.floor((t.occurred_at - a) / 86400000)] += t.amount_base; });
   const mx = Math.max(1, ...days); const bw = 300 / nd;
   const bars = `<svg viewBox="0 0 300 100" width="100%" height="110" preserveAspectRatio="none">${days.map((v, i) => `<rect x="${i * bw + 1}" y="${100 - v / mx * 96}" width="${bw - 2}" height="${v / mx * 96}" rx="2" fill="var(--pri)"/>`).join('')}</svg>`;
   const bud = per === '1M' ? budgetFor(null, m) : null;
-  const step = PERN[per] || 1; const ttl = { '1M': 'Spent this month', '3M': 'Spent in 3 months', '1Y': 'Spent in 12 months', All: 'Spent all time' }[per];
+  const step = PERN[per] || 1; const ttl = (T === 'income' ? { '1M': 'Earned this month', '3M': 'Earned in 3 months', '1Y': 'Earned in 12 months', All: 'Earned all time' } : { '1M': 'Spent this month', '3M': 'Spent in 3 months', '1Y': 'Spent in 12 months', All: 'Spent all time' })[per];
   return `<div class="top"><h1>Stats</h1>${spaceSwitch()}</div>
   <div class="seg per">${['1M', '3M', '1Y', 'All'].map(c => `<button class="${per === c ? 'on' : ''}" data-act="per" data-id="${c}">${c}</button>`).join('')}</div>
   ${per === 'All' ? '<div class="mnav"><b>All time</b></div>' : `<div class="mnav"><button data-act="mprev" data-id="${step}">‹</button><b>${perLabel(m, per)}</b><button data-act="mnext" data-id="${step}">›</button></div>`}
-  <div class="seg" style="width:max-content;margin-bottom:12px">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div>
-  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big neg">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donutOr}</div>
+  <div class="strow"><div class="seg" style="width:max-content">${[['expense', 'Expenses'], ['income', 'Income']].map(([k, n]) => `<button class="${T === k ? 'on' : ''}" data-act="statt" data-id="${k}">${n}</button>`).join('')}</div><div class="seg" style="width:max-content">${['UZS', 'USD'].map(c => `<button class="${disp === c ? 'on' : ''}" data-act="disp" data-id="${c}">${c}</button>`).join('')}</div></div>
+  <div class="card" style="text-align:center"><div class="lbl">${ttl}</div><div class="big ${T === 'income' ? 'pos' : 'neg'}">${f(sp.total)}</div>${bud ? `<div class="sub">budget ${f(bud.limit_amount)} · used ${Math.round(sp.total / bud.limit_amount * 100)}%</div>` : ''}<div class="dwrap">${donutOr}</div>
   ${items.map((it, i) => `<div class="legend" data-act="slice" data-id="${it.id}"><i style="background:${colOf(it, i)}"></i><span class="grow">${it.c ? esc(it.c.name) : 'No category'}</span><b>${f(it.v)}</b><span class="sub" style="width:42px;text-align:right">${Math.round(it.v / sp.total * 100)}%</span><svg class="lga" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>${det[it.id] || ''}`).join('')}</div>
-  ${trendChart(m, disp, rate)}
+  ${trendChart(m, disp, rate, T)}
   ${per === '1M' ? `<div class="card"><div class="lbl">By day</div>${bars}</div>` : ''}`;
 }
 function pgAccounts() {
@@ -1196,6 +1227,11 @@ document.addEventListener('click', async (e) => {
     case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic('select'); render(true); break; }
     case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic('select'); render(); break;
     case 'accf': S.accF = id; render(); break;
+    case 'catgo': S.catD = id; haptic('select'); go('/stats/cat'); break;
+    case 'catclr': S.catF = ''; haptic('select'); render(); break;
+    case 'catf': if (e.target.closest('.cfx')) { S.catF = ''; haptic('select'); render(); break; } { const b = document.createElement('button'); b.dataset.cf = '_cf'; b.dataset.kind = ''; F = { ...F, _cf: S.catF || '' }; openCatPicker(b, (cid) => { S.catF = cid; S.uncat = false; render(); }, 'All categories'); } break;
+    case 'trendh': S.month = id; haptic('select'); render(); break;
+    case 'statt': S.statT = id; haptic('select'); render(); break;
     case 'uncat': S.uncat = true; S.accF = ''; S.q = ''; go('/history'); break;
     case 'uncatf': S.uncat = !S.uncat; render(); break;
     case 'disp': S.dispCur = id; render(); break;
@@ -1415,9 +1451,9 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   const W = () => Math.min(window.innerWidth, 560);
   const cur = () => $app.firstElementChild;
   const off = (j, i) => (j > i ? 1 : -1) * (W() + 16);
-  const nbrs = () => { const i = MAIN.indexOf(S.route); if (i < 0) return PAGES()[S.route] ? [MAIN.indexOf('/profile')] : []; return [i - 1, i + 1].filter(j => j >= 0 && j < MAIN.length); };
-  const myI = () => MAIN.includes(S.route) ? MAIN.indexOf(S.route) : MAIN.length; // вложенная страница стоит правее Profile
-  const par = (r) => r === '/profile/connect' ? '/profile/me' : '/profile'; // свайп назад со вложенной страницы — на её родителя
+  const nbrs = () => { const i = MAIN.indexOf(S.route); if (i < 0) return PAGES()[S.route] ? [MAIN.indexOf(mainOf(S.route))] : []; return [i - 1, i + 1].filter(j => j >= 0 && j < MAIN.length); };
+  const myI = () => pgIdx(S.route); // вложенная страница стоит правее своей вкладки
+  const par = (r) => r === '/profile/connect' ? '/profile/me' : mainOf(r); // свайп назад со вложенной страницы — на её родителя
   const tgt = (j) => MAIN.includes(S.route) ? MAIN[j] : par(S.route);
   function dropPre() { Object.values(pre.els).forEach(n => n.remove()); pre.els = {}; pre.key = ''; }
   function prebuild() {
@@ -1443,7 +1479,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   }, { passive: false });
   function moveX(t) { const dx = t.clientX - st.x0;
     // на вложенной странице Profile свайп вправо возвращает в Profile, влево некуда
-    const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf('/profile') : -1) : i + (dx < 0 ? 1 : -1);
+    const sub = !MAIN.includes(S.route); const i = MAIN.indexOf(S.route); const j = sub ? (dx > 0 ? MAIN.indexOf(mainOf(S.route)) : -1) : i + (dx < 0 ? 1 : -1);
     st.j = pre.els[j] ? j : -1; st.nb = pre.els[j] || null; st.dx = st.nb ? dx : 0; trackV(st, st.dx);
     mv(cur(), st.dx, ''); if (st.nb) mv(st.nb, st.dx + (dx < 0 ? W() + 16 : -W() - 16), '');
     const o = pre.els[sub ? -1 : i + (dx < 0 ? -1 : 1)]; if (o) mv(o, off(sub ? -1 : i + (dx < 0 ? -1 : 1), sub ? MAIN.length : i), '');
@@ -1457,7 +1493,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const done = !!s0.nb && flingDone(s0.dx, s0.v || 0, W() * 0.3);
     const cv = springCurve((done ? sign * (W() + 16) : 0) - s0.dx, s0.v || 0);
     mv(c, done ? sign * (W() + 16) : 0, cv); if (s0.nb) mv(s0.nb, done ? 0 : -sign * (W() + 16), cv);
-    const to = s0.nb ? tgt(s0.j) : ''; const here = MAIN.includes(S.route) ? S.route : '/profile'; const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
+    const to = s0.nb ? tgt(s0.j) : ''; const here = mainOf(S.route); const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
     onTab(done ? MAIN[s0.j] : here); if (done) haptic();
     const fin = () => { clearTimeout(tm); pending = null;
       if (done) { slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = to; history[back ? 'replaceState' : 'pushState']({}, '', to); S.route = to; window.scrollTo(0, 0); render(); dropPre(); }
@@ -1469,7 +1505,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 })();
 // подсветка нажимаемой области на телефоне: класс .tch на время касания, плавно гаснет после отпускания
 (() => {
-  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx,.icb,.avab';
+  const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx,.icb,.avab,.sdr.go';
   let el = null, x0 = 0, y0 = 0;
   const off = () => { if (el) el.classList.remove('tch'); el = null; };
   document.addEventListener('touchstart', (e) => { off(); const t = e.target.closest && e.target.closest(SEL); if (!t || t.disabled) return; el = t; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; el.classList.add('tch'); }, { passive: true });
@@ -1680,10 +1716,10 @@ function syncClr() {
     const nv = document.querySelector('.nav'); if (nv) nv.classList.remove('drag');
     if (!d0.started) return;
     justDragged = true; setTimeout(() => { justDragged = false; }, 50);
-    const path = d0.target || (MAIN.includes(S.route) ? S.route : '/profile');
+    const path = d0.target || mainOf(S.route);
     const el = document.querySelector('.navpill'); if (el) { const tb = tabBox(path); if (tb) { if (d0.lt && performance.now() - d0.lt > 80) d0.v = 0; const x0 = d0.cx - tb.w / 2; setPill(tb, springCurve(tb.x - x0, d0.v || 0)); S.pill = tb; } }
     haptic();
-    if (path !== (MAIN.includes(S.route) ? S.route : '/profile')) setTimeout(() => go(path), 0); else onTab(path);
+    if (path !== mainOf(S.route)) setTimeout(() => go(path), 0); else onTab(path);
   }
   document.addEventListener('pointerup', stop); document.addEventListener('pointercancel', stop);
   window.addEventListener('click', (e) => { if (justDragged && e.target.closest('.nav')) { e.preventDefault(); e.stopPropagation(); justDragged = false; } }, true);

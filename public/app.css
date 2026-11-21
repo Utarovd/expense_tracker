@@ -559,3 +559,32 @@ html{touch-action:manipulation}
 .mecard .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
 .mehead{display:flex;flex-direction:column;align-items:center;gap:6px;margin:0 0 18px}
 .mehead b{font-size:22px;margin-top:6px}
+/* компактные строки операций (History, Home): больше операций на одном экране */
+.row[data-act=tx]{padding:8px 0;gap:11px}
+.row[data-act=tx] .ico{width:36px;height:36px;border-radius:11px}
+.row[data-act=tx] .ico .i{width:19px;height:19px}
+.row[data-act=tx] .grow b{font-size:15px}
+.row[data-act=tx] .sub{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;margin-top:1px}
+.row[data-act=tx] .amt{font-size:15px}
+.txcard{padding:0 14px!important;margin-bottom:6px}
+.txcard .row:last-child{border-bottom:0}
+.day{margin:10px 4px 4px}
+.chips .chip{padding:6px 12px;font-size:14px}
+.chips{margin-bottom:8px}
+.chip.cfchip{display:inline-flex;align-items:center;gap:6px}
+.chip.cfchip .lic{display:inline-flex;color:inherit!important}.chip.cfchip .lic .i{width:16px;height:16px}
+.cfx{opacity:.75;margin-left:2px;padding:0 2px}
+/* Stats: Expenses/Income и UZS/USD в одну строку; подкатегории выше и с переходом */
+.strow{display:flex;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.sdet .sdr{align-items:center;gap:8px;font-size:15px;padding:13px 0}
+.sdet .sdr span:first-child{flex:1}
+.sdet .sdr.go{cursor:pointer;color:var(--tx)}
+.sdet .sdr .sdc{color:var(--mut);flex:none}
+.sdet .sdr .sdc0{width:14px;flex:none}
+.sdet .sdr.sdall span:first-child{color:var(--pri);font-weight:600}
+.sdet .sdin{padding-right:22px}
+.cdback{color:var(--pri);font-weight:600;font-size:16px;cursor:pointer;text-decoration:none;display:inline-block;padding:2px 0}
+.card.hsum{padding:11px 14px;margin-bottom:10px}
+.f.hsrch{padding:10px 14px;margin-bottom:10px}
+.row[data-act=tx]{padding:7px 0}
+.row[data-act=tx] .ico{width:34px;height:34px}
