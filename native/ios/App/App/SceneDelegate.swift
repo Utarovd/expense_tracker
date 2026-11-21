@@ -65,6 +65,10 @@ class MainViewController: CAPBridgeViewController {
         webView?.isOpaque = false
         webView?.backgroundColor = Brand.background
         webView?.scrollView.backgroundColor = Brand.background
+        // резинка iOS у краёв страницы, как в Safari (Capacitor по умолчанию выключает bounces; Doniyor 21.11)
+        webView?.scrollView.bounces = true
+        webView?.scrollView.alwaysBounceVertical = true
+        webView?.scrollView.alwaysBounceHorizontal = false
         bridge?.registerPluginInstance(BudgetNativePlugin())
     }
 }
