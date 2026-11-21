@@ -558,7 +558,7 @@ async function catKeyboard(env, space, kind, txId, parentId) {
   const rows = [];
   if (!parentId) {
     const parents = results.filter(c => !c.parent_id);
-    for (let i = 0; i < parents.length; i += 2) rows.push(parents.slice(i, i + 2).map(c => ({ text: `${c.icon || ''} ${c.name}`.trim(), callback_data: (results.some(x => x.parent_id === c.id) ? 'p:' : 'c:') + txId + ':' + c.id })));
+    for (let i = 0; i < parents.length; i += 2) rows.push(parents.slice(i, i + 2).map(c => ({ text: `${c.icon && c.icon[0] !== '@' ? c.icon : ''} ${c.name}`.trim(), callback_data: (results.some(x => x.parent_id === c.id) ? 'p:' : 'c:') + txId + ':' + c.id })));
   } else {
     const p = results.find(c => c.id === parentId);
     const subs = results.filter(c => c.parent_id === parentId);
@@ -593,6 +593,17 @@ function parseQuick(text) {
   const kind = /нал|cash/i.test(t) ? 'cash' : /visa|виз/i.test(t) ? 'visa' : /карт|card/i.test(t) ? 'card' : null;
   let note = (t.slice(0, m.index) + ' ' + t.slice(m.index + m[0].length)).replace(/\$|usd|доллар\w*|сум\w*|uzs|нал\w*|cash|visa|виза|карт\w*|card/ig, ' ').replace(/\s+/g, ' ').trim();
   return { income, cur, amount: toMinor(n), note, kind };
+}
+// иконка для новой категории: ИИ выбирает одну из списка (запасной путь, когда словарь в приложении не нашёл)
+const ICON_KEYS = { food: 'food, meals', coffee: 'coffee, cafe, tea', burger: 'fast food, snacks', cart: 'groceries, supermarket', wine: 'alcohol, bars, drinks', home: 'home, rent, household', bolt: 'electricity, utilities', drop: 'water', wifi: 'internet', phone: 'mobile phone', car: 'car, taxi', fuel: 'fuel, gas station', wrench: 'repair, service, tools', bus: 'public transport', plane: 'travel, flights', bed: 'hotel', sun: 'rest, vacation', game: 'games, hobby, entertainment', film: 'movies, streaming', music: 'music, concerts', ball: 'sport', gym: 'gym, fitness', med: 'health, doctor', pill: 'pharmacy, medicine', heart: 'love, partner, dates, charity', family: 'family', baby: 'kids, baby', user: 'friends, personal', paw: 'pets', grad: 'education, courses', book: 'books', bag: 'shopping', shirt: 'clothes, shoes', cut: 'beauty, haircut', gift: 'gifts, holidays', ring: 'wedding, jewelry', receipt: 'bills, taxes, fees, subscriptions', card: 'bank, loans, credit', cash: 'cash', wallet: 'salary, income', piggy: 'savings', rate: 'cashback, interest', work: 'work, business', leaf: 'garden, plants, nature', globe: 'online, foreign', tag: 'other, anything else' };
+async function aiIcon(env, name) {
+  if (!env.AI || !name.trim()) return null;
+  const list = Object.entries(ICON_KEYS).map(([k, d]) => `${k}: ${d}`).join('\n');
+  try {
+    const out = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: [{ role: 'system', content: 'You pick an icon for a personal budget category. The name may be in Russian, Uzbek or English. Reply with ONE key from the list and nothing else.\n' + list }, { role: 'user', content: name }], max_tokens: 8, temperature: 0 });
+    const k = String(out && out.response || '').toLowerCase().match(/[a-z]+/g) || [];
+    return k.find(x => ICON_KEYS[x] && x !== 'tag') || null;
+  } catch (_) { return null; }
 }
 async function aiReadScreenshot(env, bytes, mime) {
   const prompt = 'This is a screenshot of a Payme (Uzbekistan payment app) receipt or payment history item, amounts in UZS (сум). Find the paid amount, the merchant or service/recipient name, and the date and time. Reply ONLY with JSON: {"amount": number, "currency": "UZS", "merchant": string, "datetime": "YYYY-MM-DD HH:MM" or null}. Amount is positive, without spaces or currency text. Ignore fees lines, use the total paid.';
@@ -896,6 +907,7 @@ async function handle(req, env, ctx) {
       }
       if (path === '/api/stamp') return J({ stamp: await getMeta(env, 'stamp') });
       if (path === '/api/sync' && req.method === 'POST') return J(await sync(env, await req.json()));
+      if (path === '/api/icon' && req.method === 'POST') return J({ icon: await aiIcon(env, String((await req.json()).name || '').slice(0, 60)) });
       if (path === '/api/rate') return J({ ...(await getRates(env, url.searchParams.get('force') === '1')) });
       if (path === '/api/tg/code' && req.method === 'POST') {
         const code = String(Math.floor(100000 + Math.random() * 900000));
