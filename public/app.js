@@ -691,7 +691,7 @@ function pgTrans() {
   return `<div class="top"><h1>History</h1>${spaceSwitch()}</div>${mnav()}
   ${cf ? `<div class="card hsum" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">${esc(cf.name)}</div><b class="${cf.kind === 'income' ? 'pos' : 'neg'}">${fmt(list.filter(t => t.type !== 'transfer').reduce((x, t) => x + t.amount_base, 0), 'UZS')}</b></div><div><div class="lbl">Payments</div><b>${list.length}</b></div></div>` : `<div class="card hsum" style="display:flex;justify-content:space-around;text-align:center"><div><div class="lbl">Expenses</div><b class="neg">${fmt(exp, 'UZS')}</b></div><div><div class="lbl">Income</div><b class="pos">${fmt(inc, 'UZS')}</b></div></div>`}
   <input id="srch" class="f hsrch" style="background:var(--card)" placeholder="Search" value="${esc(S.q)}">
-  <div class="chips">${cf ? `<button class="chip on cfchip" data-act="catf"><span class="lic">${catIcon(cf.id)}</span>${esc(cf.name)}<span class="cfx" data-act="catclr" aria-label="Clear">✕</span></button>` : `<button class="chip cfchip" data-act="catf">${svg('grid', 16)}Category</button>`}<button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${uncatList().length})</button><button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+  <div class="chips">${cf ? `<button class="chip on cfchip" data-act="catf"><span class="lic">${catIcon(cf.id)}</span>${esc(cf.name)}<span class="cfx" data-act="catclr" aria-label="Clear">✕</span></button>` : `<button class="chip cfchip" data-act="catf">${svg('grid', 16)}Category</button>`}${(() => { const n = uncatList().length; if (!n) { S.uncat = false; return ''; } return `<button class="chip ${S.uncat ? 'on' : ''}" data-act="uncatf">No category (${n})</button>`; })()}<button class="chip ${!S.accF ? 'on' : ''}" data-act="accf" data-id="">All</button>${accounts().map(x => `<button class="chip ${S.accF === x.id ? 'on' : ''}" data-act="accf" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div>
   ${Object.keys(days).map(k => `<div class="day"><span>${k}</span>${dayNet(days[k])}</div><div class="card txcard">${days[k].map(t => txRow(t, !S.accF)).join('')}</div>`).join('') || `<div class="card">${emptyState()}</div>`}`;
 }
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
@@ -699,16 +699,20 @@ const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expe
 const colOf = (it, i) => { const p = it.c && parseIc(it.c.icon); if (p && p.c !== 'def') return ICCOL[p.c][document.documentElement.dataset.theme === 'dark' ? 3 : 1]; return (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length]; };
 // плавно показать раскрытый блок: если заголовок с раскрытой частью не помещается на экране, страница едет (300 мс, как раскрытие) так, чтобы он встал по центру
 let revA = 0;
+// cubic-bezier как в CSS: x(t) решаем Ньютоном, возвращаем y
+function bezier(x1, y1, x2, y2) { const c = (a, b) => [3 * a, 3 * (b - a) - 3 * a, 1 - 3 * b + 3 * a]; const [cx, bx, ax] = c(x1, x2), [cy, by, ay] = c(y1, y2);
+  const X = (t) => ((ax * t + bx) * t + cx) * t, Y = (t) => ((ay * t + by) * t + cy) * t, dX = (t) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let t = x; for (let i = 0; i < 8; i++) { const e = X(t) - x, d = dX(t); if (Math.abs(e) < 1e-5 || !d) break; t -= e / d; } return Y(Math.min(1, Math.max(0, t))); }; }
 function revealOpen(head, inner, shift = 0) {
   if (!head || !inner) return; cancelAnimationFrame(revA);
   const top0 = 70, bot0 = innerHeight - 110; // под шапкой и над нижним меню
   const hr = head.getBoundingClientRect(); const h = hr.height + inner.scrollHeight; const a = hr.top - shift, b = a + h;
   if (a >= top0 && b <= bot0) return;
   const d = h <= bot0 - top0 ? (a + b) / 2 - (top0 + bot0) / 2 : a - top0;
-  const y0 = scrollY, t0 = performance.now(), D = 300; const ease = (t) => 1 - Math.pow(1 - t, 3);
+  const y0 = scrollY, t0 = performance.now() + 16, D = Math.min(520, 340 + Math.abs(d) * 0.4); const ease = bezier(.45, 0, .2, 1); // мягкий разгон и мягкая остановка, длиннее для дальнего сдвига
   const stop = () => { cancelAnimationFrame(revA); removeEventListener('touchstart', stop); removeEventListener('wheel', stop); };
   addEventListener('touchstart', stop, { passive: true, once: true }); addEventListener('wheel', stop, { passive: true, once: true });
-  const step = (now) => { const t = Math.min(1, (now - t0) / D); window.scrollTo(0, y0 + d * ease(t)); if (t < 1) revA = requestAnimationFrame(step); else stop(); };
+  const step = (now) => { const t = Math.min(1, Math.max(0, (now - t0) / D)); window.scrollTo(0, y0 + d * ease(t)); if (t < 1) revA = requestAnimationFrame(step); else stop(); };
   revA = requestAnimationFrame(step);
 }
 function selSlice(id, fromList) {
