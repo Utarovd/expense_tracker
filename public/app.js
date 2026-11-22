@@ -574,7 +574,7 @@ function setPill(b, anim) {
   const el = document.querySelector('.navpill'); if (!el || !b) return;
   const cv = typeof anim === 'string' ? anim : '.22s cubic-bezier(.4,0,.2,1)';
   const tr = anim ? `transform ${cv},width ${cv},height ${cv}` : 'none';
-  el.style.transition = tr; el.style.width = b.w + 'px'; el.style.height = b.h + 'px'; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
+  el.style.transition = tr; const w = b.w + 'px', h = b.h + 'px'; if (el.style.width !== w) el.style.width = w; if (el.style.height !== h) el.style.height = h; el.style.transform = `translate(${b.x}px,${b.y}px)`; el.style.opacity = 1;
   pillText(el, b.x, b.y, anim ? `transform ${cv}` : 'none');
 }
 const onTab = (path) => { const hs = document.querySelectorAll('.navhi a'); document.querySelectorAll('.nav a[data-go]').forEach((a, n) => { const on = a.dataset.go === path; a.classList.toggle('on', on); if (hs[n]) hs[n].classList.toggle('on', on); }); };
@@ -699,21 +699,14 @@ const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expe
 const colOf = (it, i) => { const p = it.c && parseIc(it.c.icon); if (p && p.c !== 'def') return ICCOL[p.c][document.documentElement.dataset.theme === 'dark' ? 3 : 1]; return (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length]; };
 // плавно показать раскрытый блок: если заголовок с раскрытой частью не помещается на экране, страница едет (300 мс, как раскрытие) так, чтобы он встал по центру
 let revA = 0;
-// cubic-bezier как в CSS: x(t) решаем Ньютоном, возвращаем y
-function bezier(x1, y1, x2, y2) { const c = (a, b) => [3 * a, 3 * (b - a) - 3 * a, 1 - 3 * b + 3 * a]; const [cx, bx, ax] = c(x1, x2), [cy, by, ay] = c(y1, y2);
-  const X = (t) => ((ax * t + bx) * t + cx) * t, Y = (t) => ((ay * t + by) * t + cy) * t, dX = (t) => (3 * ax * t + 2 * bx) * t + cx;
-  return (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let t = x; for (let i = 0; i < 8; i++) { const e = X(t) - x, d = dX(t); if (Math.abs(e) < 1e-5 || !d) break; t -= e / d; } return Y(Math.min(1, Math.max(0, t))); }; }
 function revealOpen(head, inner, shift = 0) {
   if (!head || !inner) return; cancelAnimationFrame(revA);
   const top0 = 70, bot0 = innerHeight - 110; // под шапкой и над нижним меню
   const hr = head.getBoundingClientRect(); const h = hr.height + inner.scrollHeight; const a = hr.top - shift, b = a + h;
   if (a >= top0 && b <= bot0) return;
   const d = h <= bot0 - top0 ? (a + b) / 2 - (top0 + bot0) / 2 : a - top0;
-  const y0 = scrollY, t0 = performance.now() + 16, D = Math.min(520, 340 + Math.abs(d) * 0.4); const ease = bezier(.45, 0, .2, 1); // мягкий разгон и мягкая остановка, длиннее для дальнего сдвига
-  const stop = () => { cancelAnimationFrame(revA); removeEventListener('touchstart', stop); removeEventListener('wheel', stop); };
-  addEventListener('touchstart', stop, { passive: true, once: true }); addEventListener('wheel', stop, { passive: true, once: true });
-  const step = (now) => { const t = Math.min(1, Math.max(0, (now - t0) / D)); window.scrollTo(0, y0 + d * ease(t)); if (t < 1) revA = requestAnimationFrame(step); else stop(); };
-  revA = requestAnimationFrame(step);
+  // прокрутку ведёт сама система (на iPhone она идёт в отдельном потоке, как обычный скролл пальцем): без покадровой прокрутки из JS, поэтому без рывков
+  requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, scrollY + d), behavior: 'smooth' }));
 }
 function selSlice(id, fromList) {
   const box = document.querySelector('.dwrap'); if (!box) return;
@@ -1570,9 +1563,9 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
 (() => {
   const SEL = '.row[data-act],.row[data-go],.legend[data-act],.seg>button,.nav a,.btn,.quick button,.addsub,.eyeb,.fab,.card[data-act],.card[data-go],.cfa button,.f,.cph,.cpi,.mnav button,.chip,.icpick button,.shx,.icb,.avab,.sdr.go';
   let el = null, x0 = 0, y0 = 0;
-  const off = () => { if (el) el.classList.remove('tch'); el = null; };
+  const off = (fast) => { if (el) { const x = el; if (fast === true) { x.classList.add('notr'); setTimeout(() => x.classList.remove('notr'), 50); } x.classList.remove('tch'); } el = null; }; // палец поехал (свайп/скролл): подсветка гаснет сразу, без затухания на каждом кадре движения
   document.addEventListener('touchstart', (e) => { off(); const t = e.target.closest && e.target.closest(SEL); if (!t || t.disabled) return; el = t; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; el.classList.add('tch'); }, { passive: true });
-  document.addEventListener('touchmove', (e) => { if (el && Math.hypot(e.touches[0].clientX - x0, e.touches[0].clientY - y0) > 8) off(); }, { passive: true });
+  document.addEventListener('touchmove', (e) => { if (el && Math.hypot(e.touches[0].clientX - x0, e.touches[0].clientY - y0) > 8) off(true); }, { passive: true });
   document.addEventListener('touchend', () => setTimeout(off, 60), { passive: true });
   document.addEventListener('touchcancel', off, { passive: true });
   window.addEventListener('scroll', off, { passive: true });

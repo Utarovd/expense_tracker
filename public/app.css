@@ -654,3 +654,7 @@ html{touch-action:manipulation}
 .rgp.open .cph::before{border-radius:var(--cr) var(--cr) 12px 12px}
 .rgp .cpi::before{top:1px;border-radius:12px}
 .rgp .cpi:last-child::before{border-radius:12px 12px var(--cr) var(--cr)}
+
+/* b115: плашка меню и сегментов — свои слои на видеокарте: при свайпе едут без перерисовки (раньше перерисовывались каждый кадр) */
+.navpill,.navhi,.segpill,.seghi{will-change:transform}
+.notr,.notr::before{transition:none!important}
