@@ -697,7 +697,21 @@ function pgTrans() {
 const PAL = ['#3b6ef6', '#22a06b', '#f5a623', '#e5484d', '#9b6cf0', '#18b4c9', '#e26ba5', '#8b92a3'];
 const CATCOL = { food: '#f97316', leisure: '#8b5cf6', transport: '#3b82f6', expenses: '#0d9488', family: '#ec4899', shopping: '#d97706', health: '#ef4444', salary: '#16a34a', 'other income': '#16a34a' };
 const colOf = (it, i) => { const p = it.c && parseIc(it.c.icon); if (p && p.c !== 'def') return ICCOL[p.c][document.documentElement.dataset.theme === 'dark' ? 3 : 1]; return (it.c && CATCOL[String(it.c.name).toLowerCase()]) || PAL[i % PAL.length]; };
-function selSlice(id) {
+// плавно показать раскрытый блок: если заголовок с раскрытой частью не помещается на экране, страница едет (300 мс, как раскрытие) так, чтобы он встал по центру
+let revA = 0;
+function revealOpen(head, inner, shift = 0) {
+  if (!head || !inner) return; cancelAnimationFrame(revA);
+  const top0 = 70, bot0 = innerHeight - 110; // под шапкой и над нижним меню
+  const hr = head.getBoundingClientRect(); const h = hr.height + inner.scrollHeight; const a = hr.top - shift, b = a + h;
+  if (a >= top0 && b <= bot0) return;
+  const d = h <= bot0 - top0 ? (a + b) / 2 - (top0 + bot0) / 2 : a - top0;
+  const y0 = scrollY, t0 = performance.now(), D = 300; const ease = (t) => 1 - Math.pow(1 - t, 3);
+  const stop = () => { cancelAnimationFrame(revA); removeEventListener('touchstart', stop); removeEventListener('wheel', stop); };
+  addEventListener('touchstart', stop, { passive: true, once: true }); addEventListener('wheel', stop, { passive: true, once: true });
+  const step = (now) => { const t = Math.min(1, (now - t0) / D); window.scrollTo(0, y0 + d * ease(t)); if (t < 1) revA = requestAnimationFrame(step); else stop(); };
+  revA = requestAnimationFrame(step);
+}
+function selSlice(id, fromList) {
   const box = document.querySelector('.dwrap'); if (!box) return;
   const cur = box.dataset.sel || ''; const nx = cur === id ? '' : id; box.dataset.sel = nx; box.classList.toggle('has', !!nx);
   box.querySelectorAll('.sl').forEach(c => c.classList.toggle('on', c.dataset.id === nx));
@@ -705,6 +719,8 @@ function selSlice(id) {
   document.querySelectorAll('.sdet').forEach(c => c.classList.toggle('on', c.dataset.for === nx));
   document.querySelectorAll('.legend').forEach(l => l.classList.toggle('on', l.dataset.id === nx));
   haptic();
+  if (nx && fromList) { const lg = document.querySelector(`.legend[data-id="${nx}"]`), dt = document.querySelector(`.sdet[data-for="${nx}"] .sdin`); const pv = cur && document.querySelector(`.sdet[data-for="${cur}"]`); // раскрытый раньше блок выше сворачивается и поднимает строку
+    const sh = pv && lg && pv.getBoundingClientRect().top < lg.getBoundingClientRect().top ? pv.getBoundingClientRect().height : 0; if (lg && dt) revealOpen(lg, dt, sh); }
 }
 const PERN = { '1M': 1, '3M': 3, '1Y': 12 };
 function perRange(m, per) {
@@ -1259,7 +1275,7 @@ document.addEventListener('click', async (e) => {
       sh.querySelectorAll('[data-bt]').forEach(i => { const x = budgetFor(i.dataset.bt, m); i.value = x && x.limit_amount > 0 ? grp(Math.round(x.limit_amount / 100)) : ''; }); btCalc(); break; }
     case 'logout': if (!(await ask('Log out?', 'You’ll need to sign in again on this device.', 'Log out'))) break; await api('/api/logout', { method: 'POST' }).catch(() => 0); tryLS(() => localStorage.removeItem('ntok')); await logoutLocal(); break;
     case 'add': openTx(null); break;
-    case 'slice': selSlice(id); break;
+    case 'slice': selSlice(id, a.classList.contains('legend')); break;
     case 'qa': { const i = document.getElementById('qa'); if (i.value.trim()) { quickAdd(i.value); i.value = ''; } break; }
     case 'space': S.space = id; S.balShown = null; persist(); render(); break;
     case 'mprev': S.month = shiftMonth(curMonth(), -(+id || 1)); render(); break;
@@ -1299,7 +1315,7 @@ document.addEventListener('click', async (e) => {
     case 'catdel': deleteCat(); break;
     case 'icpk': F.ic = id; F.icMan = true; if (!F.colMan) F.col = ICDEF[id] || 'def'; { const h = document.getElementById('ichint'); if (h) h.textContent = ''; } icPaint(); haptic('select'); break;
     case 'clpk': F.col = id; F.colMan = true; icPaint(); haptic('select'); break;
-    case 'rtog': { const s = a.closest('.rgp'), was = s.classList.contains('open'); document.querySelectorAll('.rgp.open').forEach(x => { if (x !== s) x.classList.remove('open'); }); s.classList.toggle('open', !was); S.rOpen = was ? '' : id; haptic(); break; }
+    case 'rtog': { const s = a.closest('.rgp'), was = s.classList.contains('open'); document.querySelectorAll('.rgp').forEach(x => { delete x.dataset.wasOpen; }); document.querySelectorAll('.rgp.open').forEach(x => { if (x !== s) { x.dataset.wasOpen = 1; x.classList.remove('open'); } }); s.classList.toggle('open', !was); S.rOpen = was ? '' : id; haptic(); if (!was) { const pv = [...document.querySelectorAll('.rgp')].find(x => x !== s && x.dataset.wasOpen); revealOpen(s.querySelector('.cph'), s.querySelector('.cpbi'), pv && pv.getBoundingClientRect().top < s.getBoundingClientRect().top ? pv.querySelector('.cpbi').offsetHeight : 0); } break; }
     case 'catarch': if (!(await ask('Archive this category?', 'It will be hidden from lists. Past transactions keep it.', 'Archive'))) break; put('categories', { ...byId('categories', F.cat), archived: 1 }); closeSheet(); toast('Archived'); break;
     case 'catup': moveCat(-1); break;
     case 'catdown': moveCat(1); break;
