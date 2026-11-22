@@ -480,7 +480,7 @@ async function ingest(env, ev) {
     for (const own of owns) if ((ev.currency || 'UZS') === 'UZS') {
       const out = ev.type === 'expense';
       const from = out ? acc : own, to = out ? own : acc;
-      if (own === ownOld && /IPAK YULI M ULUGBEK|HUMO\s*2\s*UZCARD|UZCARD\s*2\s*HUMO/.test(m)) return pair(from, to, 'Between own cards');
+      if (own === ownOld && /HUMO\s*2\s*UZCARD|UZCARD\s*2\s*HUMO/.test(m)) return pair(from, to, 'Between own cards');
       const tl = await env.DB.prepare("SELECT id FROM transactions WHERE account_id=? AND type='transfer' AND amount=? AND deleted_at IS NULL AND occurred_at BETWEEN ? AND ?").bind(own.id, out ? ev.amount : -ev.amount, ts - 10 * 60000, ts + 10 * 60000).first();
       if (tl) { await touch(env); return { dup: true, text: 'merged' }; }
       // встречная операция на другой своей карте (та же сумма, ±10 мин): превращаем обе в перевод
