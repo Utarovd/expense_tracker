@@ -457,6 +457,12 @@ function go(path, replace) { slideDir = dirTo(S.route, path); if (location.pathn
 window.addEventListener('popstate', () => { const np = curPath(); slideDir = dirTo(S.route, np); closeSheet(); S.route = curPath(); render(); });
 // превью иконок в Settings не пересоздаются при перерисовке: те же загруженные картинки переносятся в новую разметку, без мигания
 const ICN = {};
+// выбранный фильтр счёта в History стоит по центру ряда: при открытии сразу, при смене — плавно
+function chipsCenter(ch, smooth) {
+  const on = [...ch.querySelectorAll('.chip.on[data-act=accf]')].pop(); const key = S.accF || '';
+  if (!on || (smooth && chipsCenter.k === key)) return; chipsCenter.k = key; const x = Math.max(0, on.offsetLeft - ch.offsetLeft - (ch.clientWidth - on.offsetWidth) / 2);
+  if (smooth) ch.scrollTo({ left: x, behavior: 'smooth' }); else ch.scrollLeft = x;
+}
 function keepIcons() { document.querySelectorAll('#app .icpick img').forEach(im => { const k = im.getAttribute('src'); const c = ICN[k]; if (c && c !== im) im.replaceWith(c); else if (!c) ICN[k] = im; }); }
 let lastRoute = null;
 // переход тапом по вкладке: как при свайпе, старая страница уезжает в сторону, новая въезжает рядом (300 мс, мягкое торможение)
@@ -493,9 +499,11 @@ function render(soft) {
   if (pgAnim) pgAnim(); // быстрые тапы: предыдущий переход сразу завершаем, ничего не копится
   const slide = lastRoute !== null && lastRoute !== r && !soft && slideDir && pgIdx(lastRoute) > -1 && pgIdx(r) > -1;
   const oldPg = slide ? $app.firstElementChild : null, oldBox = oldPg && oldPg.getBoundingClientRect();
+  const chOld = $app.querySelector('.chips'); const chX = chOld && lastRoute === r ? chOld.scrollLeft : null; // ряд фильтров History не прыгает в начало при перерисовке
   $app.innerHTML = `<div class="${lastRoute !== null && lastRoute !== r && !soft && !slide ? 'pg ' + slideDir : ''}">${fn()}</div>` + nav(main) ;
   lastRoute = r; render.seq = (render.seq || 0) + 1; if (window.swPrebuild) window.swPrebuild();
   if (oldPg) slidePages(oldPg, oldBox, slideDir === 'pg-next' ? -1 : 1);
+  { const ch = $app.querySelector('.chips'); if (ch) { if (chX !== null) ch.scrollLeft = chX; chipsCenter(ch, chX !== null); } }
   keepIcons();
   placePill();
   animateBalance();
@@ -1515,7 +1523,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   function prebuild() {
     if (!S.user || ovEl || pgIdx(S.route) < 0) return; const key = S.route + ':' + render.seq; if (pre.key === key) return;
     dropPre(); pre.key = key; const i = myI();
-    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[tgt(j)](); nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; });
+    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[tgt(j)](); nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; const ch = nb.querySelector('.chips'); if (ch) { const on = [...ch.querySelectorAll('.chip.on[data-act=accf]')].pop(); if (on) ch.scrollLeft = Math.max(0, on.offsetLeft - ch.offsetLeft - (ch.clientWidth - on.offsetWidth) / 2); } });
   }
   window.swPrebuild = () => { clearTimeout(prebuild._t); prebuild._t = setTimeout(prebuild, 180); };
   const mv = (el, x, tr) => { if (!el) return; el.style.transition = tr ? 'transform ' + tr : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };

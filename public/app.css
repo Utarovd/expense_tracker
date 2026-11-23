@@ -658,3 +658,5 @@ html{touch-action:manipulation}
 /* b115: плашка меню и сегментов — свои слои на видеокарте: при свайпе едут без перерисовки (раньше перерисовывались каждый кадр) */
 .navpill,.navhi,.segpill,.seghi{will-change:transform}
 .notr,.notr::before{transition:none!important}
+/* b116: полоса прокрутки фильтров ниже кнопок, не наезжает на них */
+.chips{padding-bottom:12px;margin-bottom:0}
