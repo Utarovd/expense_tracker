@@ -660,3 +660,4 @@ html{touch-action:manipulation}
 .notr,.notr::before{transition:none!important}
 /* b116: полоса прокрутки фильтров ниже кнопок, не наезжает на них */
 .chips{padding-bottom:12px;margin-bottom:0}
+.cpnt .sdet,.cpnt .sdin,.cpnt .sl,.cpnt .dc,.cpnt .legend,.cpnt .legend::before,.cpnt .lga{transition:none!important}

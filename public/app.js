@@ -454,7 +454,7 @@ const mainOf = (p) => MAIN.includes(p) ? p : String(p).startsWith('/stats') ? '/
 const pgIdx = (p) => MAIN.includes(p) ? MAIN.indexOf(p) : PAGES()[p] ? MAIN.indexOf(mainOf(p)) + 0.5 : -1;
 const dirTo = (a, b) => { const x = pgIdx(a), y = pgIdx(b); return x > -1 && y > -1 && x !== y ? (y > x ? 'pg-next' : 'pg-prev') : ''; };
 function go(path, replace) { slideDir = dirTo(S.route, path); if (location.pathname !== path) history[replace ? 'replaceState' : 'pushState']({}, '', path); S.route = path; render(); window.scrollTo(0, 0); }
-window.addEventListener('popstate', () => { const np = curPath(); slideDir = dirTo(S.route, np); closeSheet(); S.route = curPath(); render(); });
+window.addEventListener('popstate', () => { const np = curPath(); slideDir = dirTo(S.route, np); closeSheet(); const sb = S.route === '/stats/cat' && np === '/stats' && S.statSnap; if (sb) statsApply(); S.route = curPath(); render(); if (sb) statsRestoreDom(); });
 // превью иконок в Settings не пересоздаются при перерисовке: те же загруженные картинки переносятся в новую разметку, без мигания
 const ICN = {};
 // выбранный фильтр счёта в History стоит по центру ряда: при открытии сразу, при смене — плавно
@@ -717,6 +717,16 @@ function revealOpen(head, inner, shift = 0) {
   // прокрутку ведёт сама система (на iPhone она идёт в отдельном потоке, как обычный скролл пальцем): без покадровой прокрутки из JS, поэтому без рывков
   requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, scrollY + d), behavior: 'smooth' }));
 }
+// Stats: детализация категории запоминает, каким был Stats (период, месяц, валюта, раскрытая строка, прокрутка);
+// назад (‹ Stats или свайп) возвращает ровно туда; кнопка Stats в нижнем меню — исходное положение
+function statsSnap() { const b = document.querySelector('.dwrap'); S.statSnap = { per: S.per, month: S.month, statT: S.statT, disp: S.dispCur, tr: S.trE && S.trE.st, sel: (b && b.dataset.sel) || '', y: scrollY }; }
+function statsApply() { const z = S.statSnap; if (!z) return; S.per = z.per; S.month = z.month; S.statT = z.statT; S.dispCur = z.disp; S.trE = S.trE || {}; if (z.tr) S.trE.st = z.tr; else delete S.trE.st; }
+function statsSel(root, id) { if (!id) return; const box = root.querySelector('.dwrap'); if (!box) return; box.dataset.sel = id; box.classList.add('has');
+  root.querySelectorAll('.sl').forEach(c => c.classList.toggle('on', c.dataset.id === id)); root.querySelectorAll('.dc').forEach(c => c.classList.toggle('on', c.dataset.for === id));
+  root.querySelectorAll('.sdet').forEach(c => c.classList.toggle('on', c.dataset.for === id)); root.querySelectorAll('.legend').forEach(l => l.classList.toggle('on', l.dataset.id === id)); }
+function statsRestoreDom() { const z = S.statSnap; if (!z) return; const app = document.getElementById('app'); app.classList.add('cpnt'); statsSel(app, z.sel); window.scrollTo(0, z.y); requestAnimationFrame(() => app.classList.remove('cpnt')); S.statSnap = null; }
+function statsBack() { statsApply(); const z = S.statSnap; go('/stats'); if (z) statsRestoreDom(); }
+function statsReset() { S.per = '1M'; S.month = monthKey(now()); S.statT = 'expense'; S.dispCur = 'UZS'; if (S.trE) delete S.trE.st; S.statSnap = null; }
 function selSlice(id, fromList) {
   const box = document.querySelector('.dwrap'); if (!box) return;
   const cur = box.dataset.sel || ''; const nx = cur === id ? '' : id; box.dataset.sel = nx; box.classList.toggle('has', !!nx);
@@ -1232,7 +1242,7 @@ document.addEventListener('click', async (e) => {
   touchBusy = false; clearTimeout(touchT); // палец уже поднят: перерисовка от нажатия идёт сразу, без ожидания (смена темы и т.п.)
   if (e.target.closest('[data-hdl]')) return;
   const a = e.target.closest('[data-act]'); const g = e.target.closest('[data-go]');
-  if (!a && g) { e.preventDefault(); return go(g.dataset.go); }
+  if (!a && g) { e.preventDefault(); if (g.classList.contains('cdback') && S.statSnap) return statsBack(); if (g.dataset.go === '/stats' && g.closest('.nav')) statsReset(); return go(g.dataset.go); }
   if (!a) return; const act = a.dataset.act, id = a.dataset.id;
   switch (act) {
     case 'login': { const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ login: document.getElementById('lg').value.trim(), password: document.getElementById('pw').value }) }).catch(() => null);
@@ -1292,7 +1302,7 @@ document.addEventListener('click', async (e) => {
     case 'lock': { const r = await nat('setLock', { on: S.lockOn === false }); S.lockOn = r ? r.on : S.lockOn; haptic('select'); render(true); break; }
     case 'hide': S.hide = !S.hide; tryLS(() => localStorage.setItem('hideAmt', S.hide ? '1' : '0')); haptic('select'); render(); break;
     case 'accf': S.accF = id; render(); break;
-    case 'catgo': S.catD = id; if (S.trE) delete S.trE.cd; haptic('select'); go('/stats/cat'); break;
+    case 'catgo': if (S.route === '/stats') statsSnap(); S.catD = id; if (S.trE) delete S.trE.cd; haptic('select'); go('/stats/cat'); break;
     case 'catclr': S.catF = ''; haptic('select'); render(); break;
     case 'catf': if (e.target.closest('.cfx')) { S.catF = ''; haptic('select'); render(); break; } { const b = document.createElement('button'); b.dataset.cf = '_cf'; b.dataset.kind = ''; F = { ...F, _cf: S.catF || '' }; openCatPicker(b, (cid) => { S.catF = cid; S.uncat = false; render(); }, 'All categories'); } break;
     case 'trendh': trPick('cd', id); S.month = id; haptic('select'); render(); break;
@@ -1524,7 +1534,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
   function prebuild() {
     if (!S.user || ovEl || pgIdx(S.route) < 0) return; const key = S.route + ':' + render.seq; if (pre.key === key) return;
     dropPre(); pre.key = key; const i = myI();
-    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; nb.innerHTML = PAGES()[tgt(j)](); nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; const ch = nb.querySelector('.chips'); if (ch) { const on = [...ch.querySelectorAll('.chip.on[data-act=accf]')].pop(); if (on && S.accF) ch.scrollLeft = Math.max(0, on.offsetLeft - ch.offsetLeft - (ch.clientWidth - on.offsetWidth) / 2); } });
+    nbrs().forEach(j => { const nb = document.createElement('div'); nb.className = 'swnb'; const sb = S.route === '/stats/cat' && tgt(j) === '/stats' && S.statSnap; let keep; if (sb) { keep = { per: S.per, month: S.month, statT: S.statT, disp: S.dispCur, tr: S.trE && S.trE.st }; statsApply(); } nb.innerHTML = PAGES()[tgt(j)](); if (sb) { S.per = keep.per; S.month = keep.month; S.statT = keep.statT; S.dispCur = keep.disp; if (keep.tr) S.trE.st = keep.tr; else delete S.trE.st; nb.classList.add('cpnt'); statsSel(nb, S.statSnap.sel); } nb.style.visibility = 'hidden'; nb.style.transform = `translate3d(${off(j, i)}px,0,0)`; document.body.appendChild(nb); pre.els[j] = nb; if (nb.classList.contains('cpnt') && S.statSnap) nb.scrollTop = S.statSnap.y; const ch = nb.querySelector('.chips'); if (ch) { const on = [...ch.querySelectorAll('.chip.on[data-act=accf]')].pop(); if (on && S.accF) ch.scrollLeft = Math.max(0, on.offsetLeft - ch.offsetLeft - (ch.clientWidth - on.offsetWidth) / 2); } });
   }
   window.swPrebuild = () => { clearTimeout(prebuild._t); prebuild._t = setTimeout(prebuild, 180); };
   const mv = (el, x, tr) => { if (!el) return; el.style.transition = tr ? 'transform ' + tr : 'none'; el.style.transform = `translate3d(${x}px,0,0)`; };
@@ -1561,7 +1571,7 @@ const trackV = (st, x) => { const t = performance.now(); if (st.lt) { const dt =
     const to = s0.nb ? tgt(s0.j) : ''; const here = mainOf(S.route); const tb = tabBox(done ? MAIN[s0.j] : here); if (tb) { setPill(tb, cv); S.pill = tb; }
     onTab(done ? MAIN[s0.j] : here); if (done) haptic();
     const fin = () => { clearTimeout(tm); pending = null;
-      if (done) { slideDir = ''; const back = !MAIN.includes(S.route); lastRoute = to; history[back ? 'replaceState' : 'pushState']({}, '', to); S.route = to; window.scrollTo(0, 0); render(); dropPre(); }
+      if (done) { slideDir = ''; const back = !MAIN.includes(S.route); const sb = S.route === '/stats/cat' && to === '/stats' && S.statSnap; if (sb) statsApply(); lastRoute = to; history[back ? 'replaceState' : 'pushState']({}, '', to); S.route = to; window.scrollTo(0, 0); render(); if (sb) statsRestoreDom(); dropPre(); }
       else { if (c) { c.style.transition = ''; c.style.transform = ''; c.style.willChange = ''; } Object.values(pre.els).forEach(n => { n.style.visibility = 'hidden'; }); }
     };
     const tm = setTimeout(fin, 310); pending = fin;
@@ -1784,7 +1794,7 @@ function syncClr() {
     const path = d0.target || mainOf(S.route);
     const el = document.querySelector('.navpill'); if (el) { const tb = tabBox(path); if (tb) { if (d0.lt && performance.now() - d0.lt > 80) d0.v = 0; const x0 = d0.cx - tb.w / 2; setPill(tb, springCurve(tb.x - x0, d0.v || 0)); S.pill = tb; } }
     haptic();
-    if (path !== mainOf(S.route)) setTimeout(() => go(path), 0); else onTab(path);
+    if (path !== mainOf(S.route)) setTimeout(() => { if (path === '/stats') statsReset(); go(path); }, 0); else onTab(path);
   }
   document.addEventListener('pointerup', stop); document.addEventListener('pointercancel', stop);
   window.addEventListener('click', (e) => { if (justDragged && e.target.closest('.nav')) { e.preventDefault(); e.stopPropagation(); justDragged = false; } }, true);
