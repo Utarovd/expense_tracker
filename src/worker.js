@@ -427,7 +427,7 @@ function parseSms(text) {
   let type = null;
   let kindX;
   if (/naqd pul kirim/.test(k)) kindX = 'cashin';
-  if (/chiqim|to'?lov|xarid|yechish|payment|purchase|platezh|oplata|spisanie|perevod\s+s\s+kart/.test(k)) type = 'expense';
+  if (/chiqim|to'?lov|xarid|yechish|payment|purchase|platezh|pokupk|oplata|spisanie|perevod\s+s\s+kart/.test(k)) type = 'expense';
   else if (/kartaga|kirim|tushum|o'tkazma|refund|qaytarish|popoln|zachisl|postupl|vozvrat|perevod\s+na\s+kart/.test(k)) type = 'income';
   if (!type) return null;
   const ts = Date.UTC(2000 + +yy, +mm - 1, +dd, +HH, +MM) - TZ_OFFSET;
