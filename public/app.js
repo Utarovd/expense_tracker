@@ -430,10 +430,10 @@ function closeSheet() { const el = ovEl; if (!el) return; ovEl = null; el.classL
   if (sh) sh.addEventListener('transitionend', (e) => { if (e.target === sh && e.propertyName === 'transform') fin(); }); setTimeout(fin, 700); }
 const sheetEl = () => ovEl && ovEl.firstChild;
 // подтверждение (как alert в iOS): Promise<boolean>
-function ask(title, msg, okLabel = 'Delete') {
+function ask(title, msg, okLabel = 'Delete', cancelLabel = 'Cancel') {
   return new Promise(res => {
     const el = document.createElement('div'); el.className = 'cf';
-    el.innerHTML = `<div class="cfb" role="alertdialog"><b>${esc(title)}</b>${msg ? `<p>${esc(msg)}</p>` : ''}<div class="cfa"><button data-r="0">Cancel</button><button data-r="1" class="dng">${esc(okLabel)}</button></div></div>`;
+    el.innerHTML = `<div class="cfb" role="alertdialog"><b>${esc(title)}</b>${msg ? `<p>${esc(msg)}</p>` : ''}<div class="cfa"><button data-r="0">${esc(cancelLabel)}</button><button data-r="1" class="dng">${esc(okLabel)}</button></div></div>`;
     const done = (v) => { document.removeEventListener('keydown', key, true); el.classList.remove('open'); setTimeout(() => el.remove(), 250); res(v); };
     const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(false); } if (e.key === 'Enter') { e.preventDefault(); done(true); } };
     el.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('button'); if (b) { b.classList.add('prs'); done(b.dataset.r === '1'); } else if (e.target === el) done(false); });
@@ -1060,8 +1060,8 @@ function openTx(id, type) {
   if (t && t.type === 'transfer') {
     const legs = rows('transactions').filter(x => x.transfer_group_id && x.transfer_group_id === t.transfer_group_id);
     const out = legs.find(x => x.amount < 0) || t, inn = legs.find(x => x.amount > 0);
-    F = { id: t.id, group: t.transfer_group_id, legs, type: 'transfer', from: out.account_id, to: inn ? inn.account_id : '', amount: String(Math.abs(out.amount) / 100), amount2: inn ? String(inn.amount / 100) : '', note: t.note, date: dtLocal(t.occurred_at) };
-  } else if (t) F = { id: t.id, type: t.type, account: t.account_id, amount: String(t.amount / 100), category: t.category_id || '', note: t.note || t.merchant || '', date: dtLocal(t.occurred_at) };
+    F = { id: t.id, origType: 'transfer', group: t.transfer_group_id, legs, type: 'transfer', from: out.account_id, to: inn ? inn.account_id : '', amount: String(Math.abs(out.amount) / 100), amount2: inn ? String(inn.amount / 100) : '', note: t.note, date: dtLocal(t.occurred_at) };
+  } else if (t) F = { id: t.id, origType: t.type, type: t.type, account: t.account_id, amount: String(t.amount / 100), category: t.category_id || '', note: t.note || t.merchant || '', date: dtLocal(t.occurred_at) };
   else { const def = accounts().find(a => a.type === 'cash') || accounts()[0]; F = { type: type || 'expense', account: def && def.id, from: def && def.id, to: '', amount: '', amount2: '', category: '', note: '', date: dtLocal(now()) }; }
   drawTx();
   if (!id) { const i = sheetEl() && sheetEl().querySelector('[data-f=amount]'); if (i) i.focus({ preventScroll: true }); }
@@ -1074,9 +1074,9 @@ function txHtml() {
   const fa = isT ? byId('accounts', F.from) : byId('accounts', F.account), ta = isT ? byId('accounts', F.to) : null;
   const cross = isT && fa && ta && fa.currency !== ta.currency;
   return `<h2>${F.id ? 'Edit' : 'New transaction'}</h2>
-  <div class="seg tt" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'disabled' : ''}>${n}</button>`).join('')}</div>
+  <div class="seg tt" style="margin-bottom:10px">${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([k, n]) => `<button style="flex:1" class="${F.type === k ? 'on' : ''}" data-act="ftype" data-id="${k}" ${F.id && F.type !== k && (F.type === 'transfer' || k === 'transfer') ? 'data-nosw="1"' : ''}>${n}</button>`).join('')}</div>
   <div class="txpane"><input class="f amtin amt-${F.type}" id="f-amount" inputmode="decimal" placeholder="0" value="${esc(grp(F.amount))}" data-f="amount" ${''}>
-  ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
+  ${isT ? `<div class="lbl">From</div><select class="f" data-f="from">${F.from ? '' : '<option value="">—</option>'}${opts(F.from)}</select><div class="lbl">To</div><select class="f" data-f="to"><option value="">—</option>${opts(F.to)}</select>${cross ? `<div class="lbl">Amount received (${ta.currency})</div><input class="f" inputmode="decimal" data-f="amount2" value="${esc(grp(F.amount2))}" placeholder="amount received">` : ''}`
       : `<div class="lbl">Account</div><select class="f" data-f="account">${opts(F.account)}</select><div class="lbl">Category</div>${catField('category', F.category, F.type === 'income' ? 'income' : 'expense')}`}
   <div class="lbl">Note</div><input class="f" data-f="note" value="${esc(F.note)}" placeholder="What was it">
   <div class="lbl">Date and time</div><input class="f" type="datetime-local" data-f="date" value="${F.date}">
@@ -1087,12 +1087,17 @@ function drawTx() {
   openSheet(txHtml());
   const am = document.getElementById('f-amount'); if (am && !F.id && !F.amount) setTimeout(() => am.focus(), 320);
 }
-function setFType(id) { const was = F.type; if (was === id) return;
-      if (id === 'transfer' && was !== 'transfer') { if (F.account) F.from = F.account; if (F.to === F.from) F.to = ''; }
-      else if (was === 'transfer' && id !== 'transfer' && F.from) F.account = F.from;
-      F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx();
-      if (!F.id) { const am = document.getElementById('f-amount'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
-      }
+async function setFType(id) { const was = F.type; if (was === id) return;
+  const cross = (was === 'transfer') !== (id === 'transfer');
+  // у существующей операции смена Expense/Income <-> Transfer — только после подтверждения
+  if (F.id && cross && !(await ask('Change the type?', 'Are you sure you want to change the type of this transaction? Amount, note and date stay.', 'Yes', 'No'))) return;
+  if (id === 'transfer' && was !== 'transfer') {
+    if (F.id && was === 'income') { F.to = F.account || ''; F.from = ''; } // доход -> перевод: счёт дохода = «To», «From» заполняет сам
+    else { if (F.account) F.from = F.account; if (F.id || F.to === F.from) F.to = ''; } // расход -> перевод: «From» = счёт расхода, «To» пустой
+  } else if (was === 'transfer' && id !== 'transfer' && F.from) F.account = F.from; // перевод -> расход/доход: счёт = «From»
+  F.type = id; if (id === 'income' || id === 'expense') F.category = ''; drawTx();
+  if (!F.id) { const am = document.getElementById('f-amount'); if (am) { am.focus({ preventScroll: true }); const n = am.value.length; try { am.setSelectionRange(n, n); } catch (_) {} } }
+}
 function saveTx() {
   const amt = num(F.amount); if (!(amt > 0)) return toast('Enter an amount');
   const minor = Math.round(amt * 100); const ts = fromLocal(F.date);
@@ -1102,11 +1107,16 @@ function saveTx() {
     const g = F.group || rid(); const old = F.legs || [];
     const base = fa.currency === 'UZS' ? minor : minor2; const usd = fa.currency === 'USD' ? minor : ta.currency === 'USD' ? minor2 : 0; const fx = usd ? base / usd : 1;
     const mk = (prev, acc, amount) => ({ ...(prev || {}), id: prev ? prev.id : rid(), space_id: S.space, type: 'transfer', account_id: acc.id, amount, currency: acc.currency, fx_rate: fx, amount_base: acc.currency === 'USD' ? Math.round(amount * fx) : amount, category_id: null, note: F.note, merchant: '', occurred_at: ts, transfer_group_id: g, source: (prev && prev.source) || 'app' });
-    const o = old.find(x => x.amount < 0), i = old.find(x => x.amount > 0);
+    const was = F.id && !F.group ? byId('transactions', F.id) : null; // было расходом/доходом: эта же запись становится ногой перевода
+    const o = old.find(x => x.amount < 0) || (was && F.origType === 'expense' ? was : null), i = old.find(x => x.amount > 0) || (was && F.origType === 'income' ? was : null);
     put('transactions', mk(o, fa, -minor)); put('transactions', mk(i, ta, minor2));
   } else {
     const acc = byId('accounts', F.account); if (!acc) return toast('Pick an account');
-    const prev = F.id ? byId('transactions', F.id) : null;
+    let prev = F.id ? byId('transactions', F.id) : null;
+    if (F.group) { // был переводом: ножка «From» становится расходом/доходом, вторая ножка удаляется
+      const legs = F.legs || []; const keep = legs.find(x => x.amount < 0) || prev;
+      legs.forEach(l => { if (keep && l.id !== keep.id) del('transactions', l.id); }); prev = keep ? { ...keep, transfer_group_id: null } : prev;
+    }
     const tx = prev ? { ...prev } : makeTx({ type: F.type, account: acc, amount: minor });
     const usd = acc.currency === 'USD'; const fx = prev && prev.account_id === acc.id && prev.fx_rate ? prev.fx_rate : (usd ? curRate() : 1);
     Object.assign(tx, { type: F.type, account_id: acc.id, amount: minor, currency: acc.currency, fx_rate: fx, amount_base: usd ? Math.round(minor * fx) : minor, category_id: F.category || null, note: F.note, occurred_at: ts });
@@ -1694,7 +1704,7 @@ function syncClr() {
     if (pre.sh === sh && pre.key === preKey() && Object.values(pre.nbs).every(n => n.isConnected)) return;
     Object.values(pre.nbs).forEach(n => n.remove()); pre.nbs = {}; pre.sh = sh; pre.key = preKey();
     const i = TY.indexOf(F.type); const bs = [...seg.querySelectorAll(':scope > button')]; const w0 = W();
-    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (b && !b.disabled) { const n = preview(TY[j], j > i ? w0 : -w0); hide(n); pre.nbs[j] = n; } });
+    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (b && !b.disabled && !b.dataset.nosw) { const n = preview(TY[j], j > i ? w0 : -w0); hide(n); pre.nbs[j] = n; } });
   }
   let prepT = 0; const prepSoon = (ms = 250) => { clearTimeout(prepT); prepT = setTimeout(() => { if (window.requestIdleCallback) requestIdleCallback(prep, { timeout: 400 }); else prep(); }, ms); };
   document.addEventListener('input', (e) => { if (e.target.closest && e.target.closest('.sheet')) prepSoon(); });
@@ -1709,7 +1719,7 @@ function syncClr() {
     st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lock: null, seg, bs, bx: bs.map(b => [b.offsetLeft, b.offsetWidth]), i, j: -1, dx: 0, k: 0, w0, cur: parts(), nbs: {} };
     layers(st.cur, true);
     const fresh = pre.sh === sh && pre.key === preKey() && Object.values(pre.nbs).every(n => n.isConnected);
-    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (!b || b.disabled) return;
+    [i - 1, i + 1].forEach(j => { const b = bs[j]; if (!b || b.disabled || b.dataset.nosw) return;
       if (fresh && pre.nbs[j]) { const n = pre.nbs[j]; n.style.transition = 'none'; n.style.transform = `translate3d(${j > i ? w0 : -w0}px,0,0)`; n.style.visibility = ''; st.nbs[j] = n; }
       else st.nbs[j] = preview(TY[j], j > i ? w0 : -w0); });
   }, { passive: true });
